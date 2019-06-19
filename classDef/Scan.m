@@ -217,6 +217,34 @@ classdef Scan < handle
             end
         end
         
+        function read_nanomax_xspress3(obj)            
+            try
+                % Extract scan information first                
+                try                
+                    for kk = 1:numel(obj.data_meta.scan_number)  
+                        if obj.data_meta.crop_flag
+                            obj.data = openmultixspress3_roi(obj.data_meta.scan(kk).file.name,...
+                                                             obj.data_meta.start_row,...
+                                                             obj.data_meta.end_row,...
+                                                             [obj.data_meta.roi(1),...
+                                                                obj.data_meta.roi(2),...
+                                                                obj.data_meta.roi(3),...
+                                                                obj.data_meta.roi(4),...
+                                                                obj.data_meta.start_column,...
+                                                                obj.data_meta.end_column]);
+                        else
+                            obj.data = openmultixspress3_roi(obj.data_meta.scan(kk).file.name);
+                        end
+                        fprintf('Loaded: %d \n',kk)
+                    end
+                catch
+                    error('No master file!')
+                end
+            catch
+                error('Can not load the data!')
+            end
+        end
+        
         function read_mask(obj)
 %             file_temp = fullfile(obj.data_meta.save_folder,[obj.data_meta.sample_name,'_',num2str(obj.data_meta.scan_number)],obj.data_meta.mask_name);
             try
@@ -745,10 +773,11 @@ classdef Scan < handle
             mkdir(fullfile(obj.data_meta.save_folder,file_temp));
                         
             if nargin>1
-                save(fullfile(obj.data_meta.save_folder,file_temp,[user_name,'.mat']),'obj','-v7.3');
+                file_name = user_name;
             else
-                save(fullfile(obj.data_meta.save_folder,file_temp,[file_temp,'.mat']),'obj','-v7.3');
+                file_name = strcat(file_temp,'_',obj.data_meta.detector_id);
             end
+            save(fullfile(obj.data_meta.save_folder,file_temp,[file_name,'.mat']),'obj','-v7.3');
             
             if obj.crop_flag
                 data = obj.data_crop; %#ok<*PROPLC>

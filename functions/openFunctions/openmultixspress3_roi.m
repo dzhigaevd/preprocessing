@@ -32,16 +32,24 @@ if ( nargin == 1 )
     file               = varargin{1}                                       ;
     StartIndex         = 1                                                 ;
     EndIndex           = inf                                               ;
-    roiStart          = 1                                                  ;        
-    roiRange          = inf                                                ;
+    roiYstart          = 1                                                 ;
+    roiXstart          = 1                                                 ;
+    roiYrange          = inf                                               ;
+    roiXrange          = inf                                               ;
+    frameStart         = 1                                                 ;
+    frameEnd           = inf                                               ;
+    
 elseif ( nargin == 2 )
     file               = varargin{1}                                       ;
     StartIndex         = 1                                                 ;
     EndIndex           = inf                                               ;
-    roiStart           = varargin{2}(1)                                    ;
-    roiEnd             = varargin{2}(2)                                    ;    
-    roiRange           = roiEnd - roiStart + 1                             ;
-    clear roiEnd                                                           ;
+    roiYstart          = varargin{2}(1)                                    ;
+    roiYend            = varargin{2}(2)                                    ;
+    roiXstart          = varargin{2}(3)                                    ;
+    roiXend            = varargin{2}(4)                                    ;
+    roiYrange          = roiYend - roiYstart + 1                           ;
+    roiXrange          = roiXend - roiXstart + 1                           ;
+    clear roiXend roiYend                                                  ;
 elseif ( nargin == 3 )
     file               = varargin{1}                                       ;
     StartIndex         = varargin{2}                                       ;
@@ -52,8 +60,10 @@ elseif ( nargin == 3 )
         StartIndex = dummy                                                 ;
         clear dummy                                                        ;
     end
-    roiStart          = 1                                                 ;    
-    roiRange          = inf                                               ;    
+    roiYstart          = 1                                                 ;
+    roiXstart          = 1                                                 ;
+    roiYrange          = inf                                               ;
+    roiXrange          = inf                                               ;
 elseif ( nargin == 4 )
     file               = varargin{1}                                       ;
     StartIndex         = varargin{2}                                       ;
@@ -64,14 +74,16 @@ elseif ( nargin == 4 )
         StartIndex = dummy                                                 ;
         clear dummy                                                        ;
     end
-    roiStart          = varargin{4}(1)                                    ;
-    roiEnd            = varargin{4}(2)                                    ;        
-    frameStart        = varargin{4}(3)                                    ;
-    frameEnd          = varargin{4}(4)                                    ;
+    roiYstart          = varargin{4}(1)                                    ;
+    roiYend            = varargin{4}(2)                                    ;
+    roiXstart          = varargin{4}(3)                                    ;
+    roiXend            = varargin{4}(4)                                    ;
+    frameStart         = varargin{4}(5)                                    ;
+    frameEnd           = varargin{4}(6)                                    ;
     
-    roiRange          = roiEnd - roiStart + 1                              ;
-    
-    clear roiEnd                                                           ;
+    roiYrange          = roiYend - roiYstart + 1                           ;
+    roiXrange          = roiXend - roiXstart + 1                           ;
+    clear roiXend roiYend                                                  ;
 end
     
     
@@ -108,18 +120,22 @@ end
 
 if data == 1
     fileInfo = h5info(file)                                                ;
-    dataInfo = h5info(file, '/entry_0000/measurement/Merlin/data/')        ;
+    dataInfo = h5info(file, '/entry_0000/measurement/xspress3/data/')        ;
     
     % dataFullSize: [xDiff,yDiff,fastAxis,slowAxis]
     dataFullSize  = [dataInfo.Dataspace.Size, length(fileInfo.Groups)]     ;
     
     if EndIndex == inf
-        EndIndex = dataInfo.Dataspace.Size(3)                              ; % set EndIndex to the chunk size
+        EndIndex = dataFullSize(4)                              ; % set EndIndex to the chunk size
     end
     
-    if dataInfo.Dataspace.Size(3) >= StartIndex && dataInfo.Dataspace.Size(3) >= EndIndex                    
+    if frameEnd == inf
+        frameEnd = dataFullSize(3)                              ; % set EndIndex to the chunk size
+    end
+    
+    if dataInfo.Dataspace.Size(3) >= StartIndex %&& dataInfo.Dataspace.Size(3) >= EndIndex                    
         try
-            out = zeros([dataFullSize(1),dataFullSize(2),frameEnd - frameStart,EndIndex - StartIndex],'single') ;
+            out = zeros([dataFullSize(1),dataFullSize(2),frameEnd - frameStart+1,EndIndex - StartIndex+1],'single') ;
         catch EM
             disp(EM)                                               ;
             fprintf('Please load the data in smaller chunks! \n')     ;
@@ -128,12 +144,12 @@ if data == 1
         
         for ii = 1 : EndIndex - StartIndex + 1
             for jj = 1 : frameEnd - frameStart + 1                
-                out(:,:,jj,ii) = (h5read(file,sprintf('/entry_%04i/measurement/Merlin/data/',StartIndex+ii-1),[roiXstart roiStart frameStart+jj-1],[roiXrange roiRange 1]))                                 ;                
+                out(:,:,jj,ii) = h5read(file,sprintf('/entry_%04i/measurement/xspress3/data/',StartIndex+ii-2),[roiXstart roiYstart frameStart+jj-1],[roiXrange roiYrange 1]);                
             end
             fprintf('Read line #%d \n',ii);
         end
         
-        fprintf('Final data size [%d,%d,%d,%d] \n', (size(out)));
+        fprintf('Final data size [%d,%d,%d,%d] \n', size(out));
     else
         fprintf('Error! Data file contains only %i frames!',dataInfo.Dataspace.Size(3)) ; %DSPS
         return
