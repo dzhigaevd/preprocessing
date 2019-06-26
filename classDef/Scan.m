@@ -21,10 +21,13 @@ classdef Scan < handle
 
     properties
         data;
+        data_raw;
+        
         mask;    
         crop_flag = 0;
         white_field;
         dark_field;
+        
         data_max;
         data_min;
         data_average;
@@ -32,7 +35,8 @@ classdef Scan < handle
         data_crop;
         data_3d;
         data_integral;
-        data_meta;           
+        
+        data_meta;
         STXMmap;
     end
     
@@ -382,6 +386,23 @@ classdef Scan < handle
             end
         end
         
+        function correct_flux(obj)
+            try
+                flux = openh5attribute(obj.data_meta.master_file_nanomax, '/entry62/measurement/Ni6602_buff');
+                
+                max_flux = max(max(flux));
+                relative_flux = flux./max_flux;
+                
+                for i=1:size(obj.data,3)
+                    for j=1:size(obj.data,4)
+                        obj.data(:,:,i,j) = obj.data(:,:,i,j).*relative_flux(i,j);
+                    end
+                end
+                disp('Data was corrected.')
+            catch
+                warning('The data was not corrected successfully.');
+            end
+        end
         function crop(obj)
             show_data_average(obj,'log');
             hRect = drawrectangle;            
@@ -685,7 +706,7 @@ classdef Scan < handle
             end
         end
         
-        function handles = show_data_integral(obj)             %should output an appropriate type of a plot
+        function handles = show_data_integral(obj,scale)             %should output an appropriate type of a plot
             handles.figHandle = figure;            
             if ndims(obj.data_integral) == 1
                 try
@@ -721,8 +742,57 @@ classdef Scan < handle
                 end
                 title(['Average: ' obj.data_meta.sample_name ' | Scan ' num2str(obj.data_meta.scan_number)]);
             end
-        end   
+        end
         
+        function show_fluorescence(obj)
+            if obj.data_meta.detector_id == "xspress3"
+                try
+                    obj.average([3 4])
+                    plot(log(squeeze(obj.data_average(4,:))));
+                catch
+                    warning('Can not plot fluorescence');
+                end
+            else
+                warning('The data of the scan is not fluorescence data.');
+            end
+        end
+        
+        function show_scanmap(obj,coord,map)
+            xmin = coord(1);
+            xmax = coord(2);
+            ymin = coord(3);
+            ymax = coord(4);
+
+            if isempty(obj.data_integral)
+                obj.integrate([1,2])
+            end
+
+            try
+                figure();
+                imagesc(transpose(obj.data_integral)); % transpose to rotate map
+                if nargin == 2
+                    colormap jet;
+                else
+                    colormap(map);
+                end
+                colorbar;
+                
+                % Axis
+                tick_spacing = 10;
+                xticks(1:tick_spacing:size(obj.data_integral,1)); % tick every 'tick_spacing' steps 
+                dx = tick_spacing*(xmax-xmin)/size(obj.data_integral,1);
+                xticklabels(round(xmin:dx:xmax,1)); %... which translates to tick every dx microns
+                
+                yticks(1:tick_spacing:size(obj.data_integral,2));
+                dy = tick_spacing*(ymax-ymin)/size(obj.data_integral,2);
+                yticklabels(round(ymin:dy:ymax,1));
+                
+                xlabel('Scan position, [um]'); ylabel('Scan position, [um]');
+            catch
+                warning('Can not plot an integral map');
+            end
+            title(['Scan map: ' obj.data_meta.sample_name ' | Scan ' num2str(obj.data_meta.scan_number)]);
+        end
     end
     
     % Save methods
@@ -784,6 +854,8 @@ classdef Scan < handle
             else
                 data = obj.data;
             end
+            
+            obj.data_raw = data;
             
             if obj.data_meta.save_diff
                 if nargin>1
