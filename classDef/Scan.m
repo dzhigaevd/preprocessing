@@ -403,6 +403,42 @@ classdef Scan < handle
                 warning('The data was not corrected successfully.');
             end
         end
+        
+        function shift = calculate_alignment_shift(obj,interval,columns,direction)
+            try
+                if isempty(obj.data_integral)
+                    warning('You have to integrate data first!')
+                end
+
+                if direction == 'x'
+                    for i=1:length(columns)
+                        datacrop(:,i) = obj.data_integral(interval,columns(1)+i-1);
+                        diff_data(:,i) = diff(datacrop(:,i));
+                        gauss = fit(transpose(1:length(diff_data(:,i))),diff_data(:,i),'gauss1');
+                        b(i) = gauss.b1;
+                        shift(i) = b(i)-b(1); % aligns to the first 
+                    end
+                elseif direction == 'y'
+                    disp('Alternative not yet implemented.')
+                    return
+                end
+                disp('Data was aligned.')
+            catch
+                warning('The data was not aligned successfully.');
+            end
+        end
+        
+        function correct_alignment(obj,interval,columns,direction)
+            try
+                shift = obj.calculate_alignment_shift(interval,columns,direction);
+                %%%%%%%
+                disp('Data was aligned.')
+            catch
+                warning('The data was not aligned successfully.');
+            end
+           
+        end
+        
         function crop(obj)
             show_data_average(obj,'log');
             hRect = drawrectangle;            
