@@ -407,62 +407,83 @@ classdef Scan < handle
         function shift = calculate_alignment_shift(obj,Ix,Iy,direction)
             try
                 if isempty(obj.data_integral)
-                    warning('You have to integrate data first!')
+                    obj.integrate([1 2]);
+                end
+                
+                if direction == 'y'
+                    temp = Ix;
+                    Ix = Iy;
+                    Iy = temp;
+                    
+                    obj.data_integral = transpose(obj.data_integral);
+                end
+                
+                for i=1:length(Iy) 
+                    data_row(i,:) = smooth(obj.data_integral(Ix,Iy(1)+i-1));
+
+                    if i ~= 1 % due to we need something to compare to, i.e. i=1
+                        [cross(i,:) lag(i,:)] = xcorr(data_row(1,:),data_row(i,:));
+                        cross(i,:) = cross(i,:)/max(cross(i,:)); %normalize cross correlation for each row
+                        [max_value(i), max_index(i)] = max(cross(i,:));
+                        shift(i) = lag(i,max_index(i));
+                    end
+                end
+                
+                if direction == 'y'
+                    obj.data_integral = transpose(obj.data_integral);
                 end
 
-                if direction == 'x'
-                    for i=1:length(Iy) %loops rows
-                        data_row(i,:) = obj.data_integral(Iy(1)+i-1,Ix);
-                        diff_row(i,:) = diff(data_row(i,:));
-                        gauss = fit(transpose(1:length(diff_row(i,:))),transpose(diff_row(i,:)),'gauss1');
-                        b(i) = gauss.b1;
-                        shift(i) = b(i)-b(1); % aligns to the first 
-                    end
-                elseif direction == 'y'
-                    disp('Alternative not yet implemented.')
-                    return
-                end
                 disp('The shift was calculated.')
             catch
                 warning('The shift was not calculated successfully.');
             end
         end
         
-        %ONLY TESTED FOR X-SHIFT
         function correct_alignment(obj,Ix,Iy,direction)
             try
                 shift = obj.calculate_alignment_shift(Ix,Iy,direction);
-                pixel_steps = round(shift);
-
-                for i=1:length(pixel_steps) %loops through the lines to shift
-                    if pixel_steps(i) > 0 % move to the right
+                
+                if direction == 'y'
+                    temp = Ix;
+                    Ix = Iy;
+                    Iy = temp;
+                    
+                    obj.data_integral = transpose(obj.data_integral);
+                end
+                
+                new_data = obj.data_integral;
+                
+                for i=1:length(shift) %loops through the lines to shift
+                    if shift(i) > 0 % move to the right
                        for k=1:size(obj.data_integral,1) %loops through pixels on x-axis in scan left to right
-                            if k <= pixel_steps(i)
-                                new_data(k,Iy(1)+i-1) = 0
-                %min(min(data)); 
+                            if k <= shift(i)
+                                new_data(k,Iy(1)+i-1) = min(min(obj.data_integral)); 
                             else
-                                new_data(k,Iy(1)+i-1) = obj.data_integral(k-pixel_steps(i),Iy(1)+i-1);
+                                new_data(k,Iy(1)+i-1) = obj.data_integral(k-shift(i),Iy(1)+i-1);
                             end
                        end
-                    elseif pixel_steps(i) < 0 %move to the left
+                    elseif shift(i) < 0 %move to the left
                         for k=size(obj.data_integral,1):-1:1 %loops through pixels on x-axis in scan right to left
-                            if k > size(obj.data_integral,1)+pixel_steps(i)
-                                new_data(k,Iy(1)+i-1) = 0;
-                                %new_data(k,Iy(1)+i-1) = min(min(data)); %set to minimum of data to keep scale the same
+                            if k > size(obj.data_integral,1)+shift(i)
+                                new_data(k,Iy(1)+i-1) = min(min(obj.data_integral)); %set to minimum of data to keep scale the same
                             else
-                                if k > abs(pixel_steps(i))
-                                    new_data(k,Iy(1)+i-1) = obj.data_integral(k-pixel_steps(i),Iy(1)+i-1);
+                                if k > abs(shift(i))
+                                    new_data(k,Iy(1)+i-1) = obj.data_integral(k-shift(i),Iy(1)+i-1);
                                 end
                             end
-                       end
+                        end
                     end
                 end
-                %%%%%%%
+                
+                if direction == 'y'
+                    new_data = transpose(new_data);
+                end
+                
+                obj.data_integral = new_data;
                 disp('Data was aligned.')
             catch
                 warning('The data was not aligned successfully.');
             end
-           
         end
         
         function crop(obj)
