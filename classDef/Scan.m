@@ -206,11 +206,13 @@ classdef Scan < handle
                 try                
                     for kk = 1:numel(obj.data_meta.scan_number)  
                         if obj.data_meta.crop_flag
-                            obj.data = openmultimerlin_roi(obj.data_meta.scan(kk).file.name,obj.data_meta.start_row,obj.data_meta.end_row,...
-                                [obj.data_meta.roi(1),obj.data_meta.roi(2),obj.data_meta.roi(3),obj.data_meta.roi(4),obj.data_meta.start_column,obj.data_meta.end_column]);
+                            obj.data = openmultimerlin_roi(obj.data_meta.scan(kk).file.name,obj.data_meta.scan, obj.data_meta.start_row,obj.data_meta.end_row,...
+                                [obj.data_meta.roi(1),obj.data_meta.roi(2),obj.data_meta.roi(3),obj.data_meta.roi(4),obj.data_meta.start_column,obj.data_meta.end_column],...
+                                obj.data_meta.scan);
                         else
-                            obj.data = openmultimerlin_roi(obj.data_meta.scan(kk).file.name);
+                            obj.data = openmultimerlin_roi(obj.data_meta.scan(kk).file.name, obj.data_meta.scan);
                         end
+                        obj.data_raw = obj.data;
                         fprintf('Loaded: %d \n',kk)
                     end
                 catch
@@ -228,6 +230,7 @@ classdef Scan < handle
                     for kk = 1:numel(obj.data_meta.scan_number)  
                         if obj.data_meta.crop_flag
                             obj.data = openmultixspress3_roi(obj.data_meta.scan(kk).file.name,...
+                                                             obj.data_meta.scan,...
                                                              obj.data_meta.start_row,...
                                                              obj.data_meta.end_row,...
                                                              [obj.data_meta.roi(1),...
@@ -237,8 +240,9 @@ classdef Scan < handle
                                                                 obj.data_meta.start_column,...
                                                                 obj.data_meta.end_column]);
                         else
-                            obj.data = openmultixspress3_roi(obj.data_meta.scan(kk).file.name);
+                            obj.data = openmultixspress3_roi(obj.data_meta.scan(kk).file.name, obj.data_meta.scan);
                         end
+                        obj.data_raw = obj.data;
                         fprintf('Loaded: %d \n',kk)
                     end
                 catch
@@ -247,6 +251,36 @@ classdef Scan < handle
             catch
                 error('Can not load the data!')
             end
+        end
+        
+        function read_nanomax_pil100k(obj)            
+%             try
+%                 % Extract scan information first                
+%                 try                
+                    for kk = 1:numel(obj.data_meta.scan_number)  
+                        if obj.data_meta.crop_flag
+                            obj.data = openmultipil100k_roi(obj.data_meta.scan(kk).file.name,...
+                                                             obj.data_meta.scan,...
+                                                             obj.data_meta.start_row,...
+                                                             obj.data_meta.end_row,...
+                                                             [obj.data_meta.roi(1),...
+                                                                obj.data_meta.roi(2),...
+                                                                obj.data_meta.roi(3),...
+                                                                obj.data_meta.roi(4),...
+                                                                obj.data_meta.start_column,...
+                                                                obj.data_meta.end_column]);
+                        else
+                            obj.data = openmultipil100k_roi(obj.data_meta.scan(kk).file.name, obj.data_meta.scan);
+                        end
+                        obj.data_raw = obj.data;
+                        fprintf('Loaded: %d \n',kk)
+                    end
+%                 catch
+%                     error('No master file!')
+%                 end
+%             catch
+%                 error('Can not load the data!')
+%             end
         end
         
         function read_mask(obj)

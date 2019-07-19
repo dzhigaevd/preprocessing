@@ -28,8 +28,9 @@ out = [];
 % =========================================================================
 % --- distinguish case used and create variable file
 % =========================================================================
-if ( nargin == 1 )
+if ( nargin == 2 )
     file               = varargin{1}                                       ;
+    scan_meta          = varargin{2}                                       ;
     StartIndex         = 1                                                 ;
     EndIndex           = inf                                               ;
     roiYstart          = 1                                                 ;
@@ -39,21 +40,23 @@ if ( nargin == 1 )
     frameStart         = 1                                                 ;
     frameEnd           = inf                                               ;
     
-elseif ( nargin == 2 )
+elseif ( nargin == 3 )
     file               = varargin{1}                                       ;
+    scan_meta          = varargin{2}                                       ;
     StartIndex         = 1                                                 ;
     EndIndex           = inf                                               ;
-    roiYstart          = varargin{2}(1)                                    ;
-    roiYend            = varargin{2}(2)                                    ;
-    roiXstart          = varargin{2}(3)                                    ;
-    roiXend            = varargin{2}(4)                                    ;
+    roiYstart          = varargin{3}(1)                                    ;
+    roiYend            = varargin{3}(2)                                    ;
+    roiXstart          = varargin{3}(3)                                    ;
+    roiXend            = varargin{3}(4)                                    ;
     roiYrange          = roiYend - roiYstart + 1                           ;
     roiXrange          = roiXend - roiXstart + 1                           ;
     clear roiXend roiYend                                                  ;
-elseif ( nargin == 3 )
+elseif ( nargin == 4 )
     file               = varargin{1}                                       ;
-    StartIndex         = varargin{2}                                       ;
-    EndIndex           = varargin{3}                                       ;
+    scan_meta          = varargin{2}                                       ;
+    StartIndex         = varargin{3}                                       ;
+    EndIndex           = varargin{4}                                       ;
     if StartIndex >= EndIndex
         dummy      = EndIndex                                              ;
         EndIndex   = StartIndex                                            ;
@@ -64,28 +67,29 @@ elseif ( nargin == 3 )
     roiXstart          = 1                                                 ;
     roiYrange          = inf                                               ;
     roiXrange          = inf                                               ;
-elseif ( nargin == 4 )
+    
+elseif ( nargin == 5 )
     file               = varargin{1}                                       ;
-    StartIndex         = varargin{2}                                       ;
-    EndIndex           = varargin{3}                                       ;
+    scan_meta          = varargin{2}                                       ;
+    StartIndex         = varargin{3}                                       ;
+    EndIndex           = varargin{4}                                       ;
     if StartIndex >= EndIndex
         dummy      = EndIndex                                              ;
         EndIndex   = StartIndex                                            ;
         StartIndex = dummy                                                 ;
         clear dummy                                                        ;
     end
-    roiYstart          = varargin{4}(1)                                    ;
-    roiYend            = varargin{4}(2)                                    ;
-    roiXstart          = varargin{4}(3)                                    ;
-    roiXend            = varargin{4}(4)                                    ;
-    frameStart         = varargin{4}(5)                                    ;
-    frameEnd           = varargin{4}(6)                                    ;
+    roiYstart          = varargin{5}(1)                                    ;
+    roiYend            = varargin{5}(2)                                    ;
+    roiXstart          = varargin{5}(3)                                    ;
+    roiXend            = varargin{5}(4)                                    ;
+    frameStart         = varargin{5}(5)                                    ;
+    frameEnd           = varargin{5}(6)                                    ;
     
     roiYrange          = roiYend - roiYstart + 1                           ;
     roiXrange          = roiXend - roiXstart + 1                           ;
     clear roiXend roiYend                                                  ;
 end
-    
     
 % =========================================================================
 % --- open file
@@ -135,7 +139,12 @@ if data == 1
     
     if dataInfo.Dataspace.Size(3) >= StartIndex %&& dataInfo.Dataspace.Size(3) >= EndIndex                    
         try
-            out = zeros([dataFullSize(1),dataFullSize(2),frameEnd - frameStart+1,EndIndex - StartIndex+1],'single') ;
+            switch scan_meta.type
+                case 'flyscan'
+                    out = zeros([dataFullSize(1),dataFullSize(2),frameEnd - frameStart+1,EndIndex - StartIndex+1],'single');
+                case 'dmesh'
+                    out = zeros([dataFullSize(1),dataFullSize(2),scan_meta.dim0,scan_meta.dim1],'single');
+            end
         catch EM
             disp(EM)                                               ;
             fprintf('Please load the data in smaller chunks! \n')     ;
@@ -147,6 +156,19 @@ if data == 1
                 out(:,:,jj,ii) = h5read(file,sprintf('/entry_%04i/measurement/xspress3/data/',StartIndex+ii-2),[roiXstart roiYstart frameStart+jj-1],[roiXrange roiYrange 1]);                
             end
             fprintf('Read line #%d \n',ii);
+        end
+        
+        if scan_meta.type == 'dmesh'
+            out_old = out;
+            clear out;
+            counter = 1;
+            for i=1:scan_meta.dim1 %21
+                for j=1:scan_meta.dim0 %41
+                    out(:,:,j,i) = out_old(:,:,1,counter);
+                    %fprintf('Moving datapoint %d to [%d,%d] \n',counter,j,i);
+                    counter = counter + 1;
+                end
+            end
         end
         
         fprintf('Final data size [%d,%d,%d,%d] \n', size(out));
