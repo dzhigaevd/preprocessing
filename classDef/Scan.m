@@ -44,7 +44,7 @@ classdef Scan < handle
     % - Constructor of the object -
     methods
         function obj = Scan(input_param)          
-            obj.data_meta      = input_param;                              
+            obj.data_meta = input_param;                              
         end
     end    
     
@@ -184,6 +184,40 @@ classdef Scan < handle
                 obj.mask = abs(obj.mask-1);
                 disp('Full 3D mask recorded!'); 
                 close(hF);
+            end
+        end
+        
+        function reset(obj,property)
+            if isempty(obj.data_raw)
+                warning('The raw data is empty.')
+            else
+                if nargin == 1
+                    obj.data_max = [];
+                    obj.data_min = [];
+                    obj.data_average = [];
+                    obj.data_binned = [];
+                    obj.data_crop = [];
+                    obj.data_3d = [];
+                    obj.data_integral = [];
+                else
+                    switch property
+                        case 'hard' % everything will be as imported
+                            obj.data = obj.data_raw;
+                            obj.log = '';
+                            
+                            obj.data_max = [];
+                            obj.data_min = [];
+                            obj.data_average = [];
+                            obj.data_binned = [];
+                            obj.data_crop = [];
+                            obj.data_3d = [];
+                            obj.data_integral = [];
+                        case {'integral','data_integral', 'integrate'}
+                            obj.data_integral = [];
+                        otherwise
+                            warning('The input is not valid.')
+                    end   
+                end
             end
         end
         
@@ -444,10 +478,18 @@ classdef Scan < handle
             end
         end
         
-        function shift = calculate_alignment_shift(obj,Ix,Iy,direction)
+        function shift = calculate_drift_shift(obj,Ix,Iy,direction)
             try
                 if isempty(obj.data_integral)
                     obj.integrate([1 2]);
+                end
+                
+                if nargin == 2
+                    Ix_end = size(obj.data_integral,1);
+                    Ix = 1:Ix_end;
+                    
+                    Iy_end = size(obj.data_integral,2);
+                    Iy = 1:Iy_end;
                 end
                 
                 if direction == 'y'
@@ -462,9 +504,9 @@ classdef Scan < handle
                     data_row(i,:) = smooth(obj.data_integral(Ix,Iy(1)+i-1));
 
                     if i ~= 1 % due to we need something to compare to, i.e. i=1
-                        [cross(i,:) lag(i,:)] = xcorr(data_row(1,:),data_row(i,:));
-                        cross(i,:) = cross(i,:)/max(cross(i,:)); %normalize cross correlation for each row
-                        [max_value(i), max_index(i)] = max(cross(i,:));
+                        [corr(i,:) lag(i,:)] = xcorr(data_row(1,:),data_row(i,:));
+                        corr(i,:) = corr(i,:)/max(corr(i,:)); %normalize cross correlation for each row
+                        [max_value(i), max_index(i)] = max(corr(i,:));
                         shift(i) = lag(i,max_index(i));
                     end
                 end
@@ -479,9 +521,52 @@ classdef Scan < handle
             end
         end
         
-        function correct_alignment(obj,Ix,Iy,direction)
-            try
-                shift = obj.calculate_alignment_shift(Ix,Iy,direction);
+        % Truncates obj.data corresponding to input pixels in scanmap
+        function cut(obj, cut_pixels, direction)
+            if direction == 'x'
+                cut_counter = 0;
+                for i=1:size(cut_pixels,2)
+                    if cut_pixels(1,i) == -1 % every value of cut_pixels column = -1 if to be cut
+                        fprintf('Cutting column %d of scan %d \n',i,obj.data_meta.scan_number);
+                        obj.data(:,:,i-cut_counter,:) = [];
+                        disp('The new size is: ')
+                        disp(size(obj.data));
+                        cut_counter = cut_counter + 1;
+                    end
+                end
+            end
+            
+            if direction == 'y'
+                cut_counter = 0;
+                for i=1:size(cut_pixels,1)
+                    if cut_pixels(i,1) == -1 % every value of cut_pixels column = -1 if to be cut
+                        fprintf('Cutting column %d of scan %d \n',i,obj.data_meta.scan_number);
+                        obj.data(:,:,:,i-cut_counter) = [];
+                        disp('The new size is: ')
+                        disp(size(obj.data));
+                        cut_counter = cut_counter + 1;
+                    end
+                end
+            end
+        end
+        
+        function drift_align(obj,direction,shift,Ix,Iy)
+%             try
+                if nargin == 2
+                    Ix_end = size(obj.data,3);
+                    Ix = 1:Ix_end;
+                    
+                    Iy_end = size(obj.data,4);
+                    Iy = 1:Iy_end;
+                    
+                    shift = obj.calculate_drift_shift(Ix,Iy,direction);
+                elseif nargin == 3
+                    Ix_end = size(obj.data,3);
+                    Ix = 1:Ix_end;
+                    
+                    Iy_end = size(obj.data,4);
+                    Iy = 1:Iy_end;
+                end
                 
                 if direction == 'y'
                     temp = Ix;
@@ -491,24 +576,24 @@ classdef Scan < handle
                     obj.data_integral = transpose(obj.data_integral);
                 end
                 
-                new_data = obj.data_integral;
+                new_data = obj.data;
                 
-                for i=1:length(shift) %loops through the lines to shift
+                for i=1:length(shift)
                     if shift(i) > 0 % move to the right
-                       for k=1:size(obj.data_integral,1) %loops through pixels on x-axis in scan left to right
+                       for k=1:size(obj.data,3) 
                             if k <= shift(i)
-                                new_data(k,Iy(1)+i-1) = min(min(obj.data_integral)); 
+                                new_data(:,:,k,Iy(1)+i-1) = Inf;
                             else
-                                new_data(k,Iy(1)+i-1) = obj.data_integral(k-shift(i),Iy(1)+i-1);
+                                new_data(:,:,k,Iy(1)+i-1) = obj.data(:,:,k-shift(i),Iy(1)+i-1);
                             end
                        end
                     elseif shift(i) < 0 %move to the left
-                        for k=size(obj.data_integral,1):-1:1 %loops through pixels on x-axis in scan right to left
-                            if k > size(obj.data_integral,1)+shift(i)
-                                new_data(k,Iy(1)+i-1) = min(min(obj.data_integral)); %set to minimum of data to keep scale the same
+                        for k=size(obj.data_integral,1):-1:1 
+                            if k > size(obj.data,3)+shift(i)
+                                new_data(:,:,k,Iy(1)+i-1) = Inf; 
                             else
                                 if k > abs(shift(i))
-                                    new_data(k,Iy(1)+i-1) = obj.data_integral(k-shift(i),Iy(1)+i-1);
+                                    new_data(:,:,k,Iy(1)+i-1) = obj.data(:,:,k-shift(i),Iy(1)+i-1);
                                 end
                             end
                         end
@@ -519,11 +604,29 @@ classdef Scan < handle
                     new_data = transpose(new_data);
                 end
                 
-                obj.data_integral = new_data;
+                obj.data = new_data;
+                obj.reset; % because those properties depend on obj.data
+                obj.log = [obj.log 'Aligned for drift in ' direction '-direction. ']; 
+                
+                % Truncate data (checked for only x-dir)
+                cut_pixels = zeros(size(obj.data,4),size(obj.data,3));
+                
+                % from left
+                for i=1:max(shift)
+                    cut_pixels(:,i) = -1;
+                end
+                
+                % from right
+                for i=1:abs(min(shift))
+                    cut_pixels(:,size(obj.data,3)-i+1) = -1;
+                end
+                
+                obj.cut(cut_pixels,direction);
+                
                 disp('Data was aligned.')
-            catch
-                warning('The data was not aligned successfully.');
-            end
+%             catch
+%                 warning('The data was not aligned successfully.');
+%             end
         end
         
         function crop(obj)
@@ -568,7 +671,8 @@ classdef Scan < handle
             disp('### Averaging the data ###');            
             try  
 %                 clear data_average;
-                obj.data_average = squeeze(mean(obj.data,dimsAverage));                                  
+                obj.data_average = squeeze(mean(obj.data,dimsAverage));     
+                disp('### Data was averaged ###')
             catch
                 disp('Data not-averaged!');
             end                
@@ -856,10 +960,10 @@ classdef Scan < handle
                 try
                     switch scale
                         case 'lin'
-                            handles.imHandle = imagesc(hVector,vVector,obj.data_integral);axis image;colormap bone;colorbar;axis xy
+                            handles.imHandle = imagesc(hVector,vVector,obj.data_integral);axis image;colormap jet;colorbar;axis xy
                             xlabel('Scan position, [um]');ylabel('Scan position, [um]');
                         case 'log'
-                            handles.imHandle = imagesc(hVector,vVector,log10(obj.data_integral));axis image;colormap bone;colorbar;axis xy
+                            handles.imHandle = imagesc(hVector,vVector,log10(obj.data_integral));axis image;colormap jet;colorbar;axis xy
                             xlabel('Scan position, [um]');ylabel('Scan position, [um]');
                     end                    
                 catch
@@ -882,12 +986,7 @@ classdef Scan < handle
             end
         end
         
-        function show_scanmap(obj,coord,map)
-            xmin = coord(1);
-            xmax = coord(2);
-            ymin = coord(3);
-            ymax = coord(4);
-
+        function show_scanmap(obj,coord)
             if isempty(obj.data_integral)
                 obj.integrate([1,2])
             end
@@ -895,26 +994,31 @@ classdef Scan < handle
             try
                 figure();
                 imagesc(transpose(obj.data_integral)); % transpose to rotate map
-                if nargin == 2
-                    colormap jet;
+                colormap jet; colorbar;
+                
+                if nargin > 2
+                    xmin = coord(1);
+                    xmax = coord(2);
+                    ymin = coord(3);
+                    ymax = coord(4);
+                 
+                    % Axis
+                    tick_spacing = 10;
+                    xticks(1:tick_spacing:size(obj.data_integral,1)); % tick every 'tick_spacing' steps 
+                    dx = tick_spacing*(xmax-xmin)/size(obj.data_integral,1);
+                    xticklabels(round(xmin:dx:xmax,1)); %... which translates to tick every dx microns
+
+                    yticks(1:tick_spacing:size(obj.data_integral,2));
+                    dy = tick_spacing*(ymax-ymin)/size(obj.data_integral,2);
+                    yticklabels(round(ymin:dy:ymax,1));
+
+                    xlabel('Scan position [um]'); ylabel('Scan position [um]');
                 else
-                    colormap(map);
+                    xlabel('Scan position [px]'); ylabel('Scan position [px]');
                 end
-                colorbar;
-                
-                % Axis
-                tick_spacing = 10;
-                xticks(1:tick_spacing:size(obj.data_integral,1)); % tick every 'tick_spacing' steps 
-                dx = tick_spacing*(xmax-xmin)/size(obj.data_integral,1);
-                xticklabels(round(xmin:dx:xmax,1)); %... which translates to tick every dx microns
-                
-                yticks(1:tick_spacing:size(obj.data_integral,2));
-                dy = tick_spacing*(ymax-ymin)/size(obj.data_integral,2);
-                yticklabels(round(ymin:dy:ymax,1));
-                
-                xlabel('Scan position, [um]'); ylabel('Scan position, [um]');
+                    
             catch
-                warning('Can not plot an integral map');
+                warning('Can not plot a scan map');
             end
             title(['Scan map: ' obj.data_meta.sample_name ' | Scan ' num2str(obj.data_meta.scan_number)]);
         end
@@ -966,7 +1070,7 @@ classdef Scan < handle
             disp('Saving data to .mat ...');
             file_temp = [obj.data_meta.sample_name,'_',num2str(obj.data_meta.scan_number)];
             mkdir(fullfile(obj.data_meta.save_folder,file_temp));
-                        
+            
             if nargin>1
                 file_name = user_name;
             else
@@ -979,8 +1083,6 @@ classdef Scan < handle
             else
                 data = obj.data;
             end
-            
-            obj.data_raw = data;
             
             if obj.data_meta.save_diff
                 if nargin>1
