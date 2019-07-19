@@ -39,25 +39,11 @@ else
     return
 end
 
-if master == 1
-    dataInfo = h5info(file, attribute);
-    
-    dataFullSize  = dataInfo.Dataspace.Size;
-    out = h5read(file,sprintf(attribute));
-    
-    %Specific for Ni6602_buff
-    out = transpose(out);
-    out = out(:,any(out));
-    
-    %To mimic the matrix structure in HDFView
-%     switch dataFullSize
-%         case 2
-%             out = transpose(out); 
-%         case {3,4}
-%             out = permute(out,[3 1 2]); 
-%     end
-%     if attribute == 'Ni6602_buff'
-%         out=out(:,any(out)) % Removes columns/rows with only zeros
-%     end
-end
+% dataInfo = h5info(file, attribute);
+% dataFullSize  = dataInfo.Dataspace.Size;
 
+out = h5read(file,attribute);
+
+%This is the case for Ni6602_buff, not checked if it is the same for more attributes
+out = transpose(out);
+out = out(:,any(out));

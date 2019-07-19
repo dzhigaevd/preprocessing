@@ -37,6 +37,7 @@ classdef Scan < handle
         data_integral;
         
         data_meta;
+        log = '';
         STXMmap;
     end
     
@@ -201,16 +202,48 @@ classdef Scan < handle
         end   
         
         function read_nanomax_merlin(obj)            
+%             try
+%                 % Extract scan information first                
+%                 try                
+                    for kk = 1:numel(obj.data_meta.scan_number)  
+                        if obj.data_meta.crop_flag
+                            obj.data = openmultimerlin_roi(obj.data_meta.scan(kk).file.name,obj.data_meta.scan, obj.data_meta.start_row,obj.data_meta.end_row,...
+                                [obj.data_meta.roi(1),obj.data_meta.roi(2),obj.data_meta.roi(3),obj.data_meta.roi(4),obj.data_meta.start_column,obj.data_meta.end_column],...
+                                obj.data_meta.scan);
+                        else
+                            obj.data = openmultimerlin_roi(obj.data_meta.scan(kk).file.name, obj.data_meta.scan);
+                        end
+                        obj.data_raw = obj.data;
+                        fprintf('Loaded: %d \n',kk)
+                    end
+%                 catch
+%                     error('No master file!')
+%                 end
+%             catch
+%                 error('Can not load the data!')
+%             end
+        end
+        
+        function read_nanomax_xspress3(obj)            
             try
                 % Extract scan information first                
                 try                
                     for kk = 1:numel(obj.data_meta.scan_number)  
                         if obj.data_meta.crop_flag
-                            obj.data = openmultimerlin_roi(obj.data_meta.scan(kk).file.name,obj.data_meta.start_row,obj.data_meta.end_row,...
-                                [obj.data_meta.roi(1),obj.data_meta.roi(2),obj.data_meta.roi(3),obj.data_meta.roi(4),obj.data_meta.start_column,obj.data_meta.end_column]);
+                            obj.data = openmultixspress3_roi(obj.data_meta.scan(kk).file.name,...
+                                                             obj.data_meta.scan,...
+                                                             obj.data_meta.start_row,...
+                                                             obj.data_meta.end_row,...
+                                                             [obj.data_meta.roi(1),...
+                                                                obj.data_meta.roi(2),...
+                                                                obj.data_meta.roi(3),...
+                                                                obj.data_meta.roi(4),...
+                                                                obj.data_meta.start_column,...
+                                                                obj.data_meta.end_column]);
                         else
-                            obj.data = openmultimerlin_roi(obj.data_meta.scan(kk).file.name);
+                            obj.data = openmultixspress3_roi(obj.data_meta.scan(kk).file.name, obj.data_meta.scan);
                         end
+                        obj.data_raw = obj.data;
                         fprintf('Loaded: %d \n',kk)
                     end
                 catch
@@ -221,13 +254,14 @@ classdef Scan < handle
             end
         end
         
-        function read_nanomax_xspress3(obj)            
-            try
-                % Extract scan information first                
-                try                
+        function read_nanomax_pil100k(obj)            
+%             try
+%                 % Extract scan information first                
+%                 try                
                     for kk = 1:numel(obj.data_meta.scan_number)  
                         if obj.data_meta.crop_flag
-                            obj.data = openmultixspress3_roi(obj.data_meta.scan(kk).file.name,...
+                            obj.data = openmultipil100k_roi(obj.data_meta.scan(kk).file.name,...
+                                                             obj.data_meta.scan,...
                                                              obj.data_meta.start_row,...
                                                              obj.data_meta.end_row,...
                                                              [obj.data_meta.roi(1),...
@@ -237,16 +271,17 @@ classdef Scan < handle
                                                                 obj.data_meta.start_column,...
                                                                 obj.data_meta.end_column]);
                         else
-                            obj.data = openmultixspress3_roi(obj.data_meta.scan(kk).file.name);
+                            obj.data = openmultipil100k_roi(obj.data_meta.scan(kk).file.name, obj.data_meta.scan);
                         end
+                        obj.data_raw = obj.data;
                         fprintf('Loaded: %d \n',kk)
                     end
-                catch
-                    error('No master file!')
-                end
-            catch
-                error('Can not load the data!')
-            end
+%                 catch
+%                     error('No master file!')
+%                 end
+%             catch
+%                 error('Can not load the data!')
+%             end
         end
         
         function read_mask(obj)
@@ -320,6 +355,7 @@ classdef Scan < handle
                         end
                         fprintf('Processign Scan #%d\n',jj);
                     end
+                    obj.log = [obj.log 'Dark field correction. ']; 
                     disp('Data corrected by dark field!')
                 elseif ~isempty(obj.dark_field) & size(obj.data(:,:,1))~=size(obj.dark_field)
                     error('Dark field size does not match data size!')
@@ -347,6 +383,7 @@ classdef Scan < handle
                         end
                         fprintf('Processing Scan #%d\n',jj);
                     end
+                    obj.log = [obj.log 'White field correction. ']; 
                     disp('Data corrected by white field!')
                 elseif ~isempty(obj.white_field) & size(obj.data(:,:,1))~=size(obj.white_field)
                     error('White field size does not match data size!')
@@ -366,6 +403,7 @@ classdef Scan < handle
             disp('### Masking the data ###');
             try
                 obj.data = obj.data.*obj.mask;
+                obj.log = [obj.log 'Applied mask. ']; 
                 disp('Mask applied!');
             catch
                 warning('No mask specified or exists!');
@@ -380,6 +418,7 @@ classdef Scan < handle
                         obj.data(:,:,ii,jj) = obj.data(:,:,ii,jj).*single(obj.mask);
                     end
                 end
+                obj.log = [obj.log 'Applied mask. ']; 
                 disp('Mask applied!');
             catch
                 warning('No mask specified or exists!');
@@ -388,7 +427,7 @@ classdef Scan < handle
         
         function correct_flux(obj)
             try
-                flux = openh5attribute(obj.data_meta.master_file_nanomax, '/entry62/measurement/Ni6602_buff');
+                flux = openh5attribute(obj.data_meta.master_file_nanomax, sprintf('/entry%d/measurement/Ni6602_buff',obj.data_meta.scan_number));
                 
                 max_flux = max(max(flux));
                 relative_flux = flux./max_flux;
@@ -398,6 +437,7 @@ classdef Scan < handle
                         obj.data(:,:,i,j) = obj.data(:,:,i,j).*relative_flux(i,j);
                     end
                 end
+                obj.log = [obj.log 'Flux correction. ']; 
                 disp('Data was corrected.')
             catch
                 warning('The data was not corrected successfully.');
@@ -503,6 +543,7 @@ classdef Scan < handle
             disp('### Hot-pixels correction ###');
             if ~interpolate
                 obj.data(x,y,:,:) = 0;
+                obj.log = [obj.log 'Hot pixel [x:' x ' y:' y '] zeroed. ']; 
                 fprintf('Hot pixel [x:%d y:%d] zeroed!\n',x,y);
             else               
                 for jj = 1:size(obj.data,4)
@@ -517,7 +558,8 @@ classdef Scan < handle
                             end                            
                         end
                     end
-                end                                
+                end    
+                obj.log = [obj.log 'Hot pixel [x:' x ' y:' y '] interpolated. ']; 
                 fprintf('Hot pixel [x:%d y:%d] interpolated!\n',x,y);
             end                
         end        
