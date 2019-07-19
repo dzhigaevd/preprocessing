@@ -980,8 +980,6 @@ classdef Scan < handle
                 data = obj.data;
             end
             
-            obj.data_raw = data;
-            
             if obj.data_meta.save_diff
                 if nargin>1
                     save(fullfile(obj.data_meta.save_folder,file_temp,[user_name,'_diff.mat']),'data','-v7.3');
