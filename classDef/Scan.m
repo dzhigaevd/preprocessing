@@ -37,6 +37,7 @@ classdef Scan < handle
         data_integral;
         
         data_meta;
+        log = '';
         STXMmap;
     end
     
@@ -354,6 +355,7 @@ classdef Scan < handle
                         end
                         fprintf('Processign Scan #%d\n',jj);
                     end
+                    obj.log = [obj.log 'Dark field correction. ']; 
                     disp('Data corrected by dark field!')
                 elseif ~isempty(obj.dark_field) & size(obj.data(:,:,1))~=size(obj.dark_field)
                     error('Dark field size does not match data size!')
@@ -381,6 +383,7 @@ classdef Scan < handle
                         end
                         fprintf('Processing Scan #%d\n',jj);
                     end
+                    obj.log = [obj.log 'White field correction. ']; 
                     disp('Data corrected by white field!')
                 elseif ~isempty(obj.white_field) & size(obj.data(:,:,1))~=size(obj.white_field)
                     error('White field size does not match data size!')
@@ -400,6 +403,7 @@ classdef Scan < handle
             disp('### Masking the data ###');
             try
                 obj.data = obj.data.*obj.mask;
+                obj.log = [obj.log 'Applied mask. ']; 
                 disp('Mask applied!');
             catch
                 warning('No mask specified or exists!');
@@ -414,6 +418,7 @@ classdef Scan < handle
                         obj.data(:,:,ii,jj) = obj.data(:,:,ii,jj).*single(obj.mask);
                     end
                 end
+                obj.log = [obj.log 'Applied mask. ']; 
                 disp('Mask applied!');
             catch
                 warning('No mask specified or exists!');
@@ -432,6 +437,7 @@ classdef Scan < handle
                         obj.data(:,:,i,j) = obj.data(:,:,i,j).*relative_flux(i,j);
                     end
                 end
+                obj.log = [obj.log 'Flux correction. ']; 
                 disp('Data was corrected.')
             catch
                 warning('The data was not corrected successfully.');
@@ -537,6 +543,7 @@ classdef Scan < handle
             disp('### Hot-pixels correction ###');
             if ~interpolate
                 obj.data(x,y,:,:) = 0;
+                obj.log = [obj.log 'Hot pixel [x:' x ' y:' y '] zeroed. ']; 
                 fprintf('Hot pixel [x:%d y:%d] zeroed!\n',x,y);
             else               
                 for jj = 1:size(obj.data,4)
@@ -551,7 +558,8 @@ classdef Scan < handle
                             end                            
                         end
                     end
-                end                                
+                end    
+                obj.log = [obj.log 'Hot pixel [x:' x ' y:' y '] interpolated. ']; 
                 fprintf('Hot pixel [x:%d y:%d] interpolated!\n',x,y);
             end                
         end        
