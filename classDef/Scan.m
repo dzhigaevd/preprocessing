@@ -21,10 +21,13 @@ classdef Scan < handle
 
     properties
         data;
+        data_raw;
+        
         mask;    
         crop_flag = 0;
         white_field;
         dark_field;
+        
         data_max;
         data_min;
         data_average;
@@ -32,14 +35,16 @@ classdef Scan < handle
         data_crop;
         data_3d;
         data_integral;
-        data_meta;           
+        
+        data_meta;
+        log = '';
         STXMmap;
     end
     
     % - Constructor of the object -
     methods
         function obj = Scan(input_param)          
-            obj.data_meta      = input_param;                              
+            obj.data_meta = input_param;                              
         end
     end    
     
@@ -182,6 +187,40 @@ classdef Scan < handle
             end
         end
         
+        function reset(obj,property)
+            if isempty(obj.data_raw)
+                warning('The raw data is empty.')
+            else
+                if nargin == 1
+                    obj.data_max = [];
+                    obj.data_min = [];
+                    obj.data_average = [];
+                    obj.data_binned = [];
+                    obj.data_crop = [];
+                    obj.data_3d = [];
+                    obj.data_integral = [];
+                else
+                    switch property
+                        case 'hard' % everything will be as imported
+                            obj.data = obj.data_raw;
+                            obj.log = '';
+                            
+                            obj.data_max = [];
+                            obj.data_min = [];
+                            obj.data_average = [];
+                            obj.data_binned = [];
+                            obj.data_crop = [];
+                            obj.data_3d = [];
+                            obj.data_integral = [];
+                        case {'integral','data_integral', 'integrate'}
+                            obj.data_integral = [];
+                        otherwise
+                            warning('The input is not valid.')
+                    end   
+                end
+            end
+        end
+        
         function read_tif(obj)
             try
                 for jj = 1:numel(obj.data_meta.scan_number)
@@ -197,16 +236,48 @@ classdef Scan < handle
         end   
         
         function read_nanomax_merlin(obj)            
+%             try
+%                 % Extract scan information first                
+%                 try                
+                    for kk = 1:numel(obj.data_meta.scan_number)  
+                        if obj.data_meta.crop_flag
+                            obj.data = openmultimerlin_roi(obj.data_meta.scan(kk).file.name,obj.data_meta.scan, obj.data_meta.start_row,obj.data_meta.end_row,...
+                                [obj.data_meta.roi(1),obj.data_meta.roi(2),obj.data_meta.roi(3),obj.data_meta.roi(4),obj.data_meta.start_column,obj.data_meta.end_column],...
+                                obj.data_meta.scan);
+                        else
+                            obj.data = openmultimerlin_roi(obj.data_meta.scan(kk).file.name, obj.data_meta.scan);
+                        end
+                        obj.data_raw = obj.data;
+                        fprintf('Loaded: %d \n',kk)
+                    end
+%                 catch
+%                     error('No master file!')
+%                 end
+%             catch
+%                 error('Can not load the data!')
+%             end
+        end
+        
+        function read_nanomax_xspress3(obj)            
             try
                 % Extract scan information first                
                 try                
                     for kk = 1:numel(obj.data_meta.scan_number)  
                         if obj.data_meta.crop_flag
-                            obj.data = openmultimerlin_roi(obj.data_meta.scan(kk).file.name,obj.data_meta.start_row,obj.data_meta.end_row,...
-                                [obj.data_meta.roi(1),obj.data_meta.roi(2),obj.data_meta.roi(3),obj.data_meta.roi(4),obj.data_meta.start_column,obj.data_meta.end_column]);
+                            obj.data = openmultixspress3_roi(obj.data_meta.scan(kk).file.name,...
+                                                             obj.data_meta.scan,...
+                                                             obj.data_meta.start_row,...
+                                                             obj.data_meta.end_row,...
+                                                             [obj.data_meta.roi(1),...
+                                                                obj.data_meta.roi(2),...
+                                                                obj.data_meta.roi(3),...
+                                                                obj.data_meta.roi(4),...
+                                                                obj.data_meta.start_column,...
+                                                                obj.data_meta.end_column]);
                         else
-                            obj.data = openmultimerlin_roi(obj.data_meta.scan(kk).file.name);
+                            obj.data = openmultixspress3_roi(obj.data_meta.scan(kk).file.name, obj.data_meta.scan);
                         end
+                        obj.data_raw = obj.data;
                         fprintf('Loaded: %d \n',kk)
                     end
                 catch
@@ -217,13 +288,14 @@ classdef Scan < handle
             end
         end
         
-        function read_nanomax_xspress3(obj)            
-            try
-                % Extract scan information first                
-                try                
+        function read_nanomax_pil100k(obj)            
+%             try
+%                 % Extract scan information first                
+%                 try                
                     for kk = 1:numel(obj.data_meta.scan_number)  
                         if obj.data_meta.crop_flag
-                            obj.data = openmultixspress3_roi(obj.data_meta.scan(kk).file.name,...
+                            obj.data = openmultipil100k_roi(obj.data_meta.scan(kk).file.name,...
+                                                             obj.data_meta.scan,...
                                                              obj.data_meta.start_row,...
                                                              obj.data_meta.end_row,...
                                                              [obj.data_meta.roi(1),...
@@ -233,16 +305,17 @@ classdef Scan < handle
                                                                 obj.data_meta.start_column,...
                                                                 obj.data_meta.end_column]);
                         else
-                            obj.data = openmultixspress3_roi(obj.data_meta.scan(kk).file.name);
+                            obj.data = openmultipil100k_roi(obj.data_meta.scan(kk).file.name, obj.data_meta.scan);
                         end
+                        obj.data_raw = obj.data;
                         fprintf('Loaded: %d \n',kk)
                     end
-                catch
-                    error('No master file!')
-                end
-            catch
-                error('Can not load the data!')
-            end
+%                 catch
+%                     error('No master file!')
+%                 end
+%             catch
+%                 error('Can not load the data!')
+%             end
         end
         
         function read_mask(obj)
@@ -316,6 +389,7 @@ classdef Scan < handle
                         end
                         fprintf('Processign Scan #%d\n',jj);
                     end
+                    obj.log = [obj.log 'Dark field correction. ']; 
                     disp('Data corrected by dark field!')
                 elseif ~isempty(obj.dark_field) & size(obj.data(:,:,1))~=size(obj.dark_field)
                     error('Dark field size does not match data size!')
@@ -343,6 +417,7 @@ classdef Scan < handle
                         end
                         fprintf('Processing Scan #%d\n',jj);
                     end
+                    obj.log = [obj.log 'White field correction. ']; 
                     disp('Data corrected by white field!')
                 elseif ~isempty(obj.white_field) & size(obj.data(:,:,1))~=size(obj.white_field)
                     error('White field size does not match data size!')
@@ -362,6 +437,7 @@ classdef Scan < handle
             disp('### Masking the data ###');
             try
                 obj.data = obj.data.*obj.mask;
+                obj.log = [obj.log 'Applied mask. ']; 
                 disp('Mask applied!');
             catch
                 warning('No mask specified or exists!');
@@ -376,10 +452,181 @@ classdef Scan < handle
                         obj.data(:,:,ii,jj) = obj.data(:,:,ii,jj).*single(obj.mask);
                     end
                 end
+                obj.log = [obj.log 'Applied mask. ']; 
                 disp('Mask applied!');
             catch
                 warning('No mask specified or exists!');
             end
+        end
+        
+        function correct_flux(obj)
+            try
+                flux = openh5attribute(obj.data_meta.master_file_nanomax, sprintf('/entry%d/measurement/Ni6602_buff',obj.data_meta.scan_number));
+                
+                max_flux = max(max(flux));
+                relative_flux = flux./max_flux;
+                
+                for i=1:size(obj.data,3)
+                    for j=1:size(obj.data,4)
+                        obj.data(:,:,i,j) = obj.data(:,:,i,j).*relative_flux(i,j);
+                    end
+                end
+                obj.log = [obj.log 'Flux correction. ']; 
+                disp('Data was corrected.')
+            catch
+                warning('The data was not corrected successfully.');
+            end
+        end
+        
+        function shift = calculate_drift_shift(obj,Ix,Iy,direction)
+            try
+                if isempty(obj.data_integral)
+                    obj.integrate([1 2]);
+                end
+                
+                if nargin == 2
+                    Ix_end = size(obj.data_integral,1);
+                    Ix = 1:Ix_end;
+                    
+                    Iy_end = size(obj.data_integral,2);
+                    Iy = 1:Iy_end;
+                end
+                
+                if direction == 'y'
+                    temp = Ix;
+                    Ix = Iy;
+                    Iy = temp;
+                    
+                    obj.data_integral = transpose(obj.data_integral);
+                end
+                
+                for i=1:length(Iy) 
+                    data_row(i,:) = smooth(obj.data_integral(Ix,Iy(1)+i-1));
+
+                    if i ~= 1 % due to we need something to compare to, i.e. i=1
+                        [corr(i,:) lag(i,:)] = xcorr(data_row(1,:),data_row(i,:));
+                        corr(i,:) = corr(i,:)/max(corr(i,:)); %normalize cross correlation for each row
+                        [max_value(i), max_index(i)] = max(corr(i,:));
+                        shift(i) = lag(i,max_index(i));
+                    end
+                end
+                
+                if direction == 'y'
+                    obj.data_integral = transpose(obj.data_integral);
+                end
+
+                disp('The shift was calculated.')
+            catch
+                warning('The shift was not calculated successfully.');
+            end
+        end
+        
+        % Truncates obj.data corresponding to input pixels in scanmap
+        function cut(obj, cut_pixels, direction)
+            if direction == 'x'
+                cut_counter = 0;
+                for i=1:size(cut_pixels,2)
+                    if cut_pixels(1,i) == -1 % every value of cut_pixels column = -1 if to be cut
+                        fprintf('Cutting column %d of scan %d \n',i,obj.data_meta.scan_number);
+                        obj.data(:,:,i-cut_counter,:) = [];
+                        disp('The new size is: ')
+                        disp(size(obj.data));
+                        cut_counter = cut_counter + 1;
+                    end
+                end
+            end
+            
+            if direction == 'y'
+                cut_counter = 0;
+                for i=1:size(cut_pixels,1)
+                    if cut_pixels(i,1) == -1 % every value of cut_pixels column = -1 if to be cut
+                        fprintf('Cutting column %d of scan %d \n',i,obj.data_meta.scan_number);
+                        obj.data(:,:,:,i-cut_counter) = [];
+                        disp('The new size is: ')
+                        disp(size(obj.data));
+                        cut_counter = cut_counter + 1;
+                    end
+                end
+            end
+        end
+        
+        function drift_align(obj,direction,shift,Ix,Iy)
+%             try
+                if nargin == 2
+                    Ix_end = size(obj.data,3);
+                    Ix = 1:Ix_end;
+                    
+                    Iy_end = size(obj.data,4);
+                    Iy = 1:Iy_end;
+                    
+                    shift = obj.calculate_drift_shift(Ix,Iy,direction);
+                elseif nargin == 3
+                    Ix_end = size(obj.data,3);
+                    Ix = 1:Ix_end;
+                    
+                    Iy_end = size(obj.data,4);
+                    Iy = 1:Iy_end;
+                end
+                
+                if direction == 'y'
+                    temp = Ix;
+                    Ix = Iy;
+                    Iy = temp;
+                    
+                    obj.data_integral = transpose(obj.data_integral);
+                end
+                
+                new_data = obj.data;
+                
+                for i=1:length(shift)
+                    if shift(i) > 0 % move to the right
+                       for k=1:size(obj.data,3) 
+                            if k <= shift(i)
+                                new_data(:,:,k,Iy(1)+i-1) = Inf;
+                            else
+                                new_data(:,:,k,Iy(1)+i-1) = obj.data(:,:,k-shift(i),Iy(1)+i-1);
+                            end
+                       end
+                    elseif shift(i) < 0 %move to the left
+                        for k=size(obj.data_integral,1):-1:1 
+                            if k > size(obj.data,3)+shift(i)
+                                new_data(:,:,k,Iy(1)+i-1) = Inf; 
+                            else
+                                if k > abs(shift(i))
+                                    new_data(:,:,k,Iy(1)+i-1) = obj.data(:,:,k-shift(i),Iy(1)+i-1);
+                                end
+                            end
+                        end
+                    end
+                end
+                
+                if direction == 'y'
+                    new_data = transpose(new_data);
+                end
+                
+                obj.data = new_data;
+                obj.reset; % because those properties depend on obj.data
+                obj.log = [obj.log 'Aligned for drift in ' direction '-direction. ']; 
+                
+                % Truncate data (checked for only x-dir)
+                cut_pixels = zeros(size(obj.data,4),size(obj.data,3));
+                
+                % from left
+                for i=1:max(shift)
+                    cut_pixels(:,i) = -1;
+                end
+                
+                % from right
+                for i=1:abs(min(shift))
+                    cut_pixels(:,size(obj.data,3)-i+1) = -1;
+                end
+                
+                obj.cut(cut_pixels,direction);
+                
+                disp('Data was aligned.')
+%             catch
+%                 warning('The data was not aligned successfully.');
+%             end
         end
         
         function crop(obj)
@@ -399,6 +646,7 @@ classdef Scan < handle
             disp('### Hot-pixels correction ###');
             if ~interpolate
                 obj.data(x,y,:,:) = 0;
+                obj.log = [obj.log 'Hot pixel [x:' x ' y:' y '] zeroed. ']; 
                 fprintf('Hot pixel [x:%d y:%d] zeroed!\n',x,y);
             else               
                 for jj = 1:size(obj.data,4)
@@ -413,7 +661,8 @@ classdef Scan < handle
                             end                            
                         end
                     end
-                end                                
+                end    
+                obj.log = [obj.log 'Hot pixel [x:' x ' y:' y '] interpolated. ']; 
                 fprintf('Hot pixel [x:%d y:%d] interpolated!\n',x,y);
             end                
         end        
@@ -422,7 +671,8 @@ classdef Scan < handle
             disp('### Averaging the data ###');            
             try  
 %                 clear data_average;
-                obj.data_average = squeeze(mean(obj.data,dimsAverage));                                  
+                obj.data_average = squeeze(mean(obj.data,dimsAverage));     
+                disp('### Data was averaged ###')
             catch
                 disp('Data not-averaged!');
             end                
@@ -685,7 +935,7 @@ classdef Scan < handle
             end
         end
         
-        function handles = show_data_integral(obj)             %should output an appropriate type of a plot
+        function handles = show_data_integral(obj,scale)             %should output an appropriate type of a plot
             handles.figHandle = figure;            
             if ndims(obj.data_integral) == 1
                 try
@@ -710,10 +960,10 @@ classdef Scan < handle
                 try
                     switch scale
                         case 'lin'
-                            handles.imHandle = imagesc(hVector,vVector,obj.data_integral);axis image;colormap bone;colorbar;axis xy
+                            handles.imHandle = imagesc(hVector,vVector,obj.data_integral);axis image;colormap jet;colorbar;axis xy
                             xlabel('Scan position, [um]');ylabel('Scan position, [um]');
                         case 'log'
-                            handles.imHandle = imagesc(hVector,vVector,log10(obj.data_integral));axis image;colormap bone;colorbar;axis xy
+                            handles.imHandle = imagesc(hVector,vVector,log10(obj.data_integral));axis image;colormap jet;colorbar;axis xy
                             xlabel('Scan position, [um]');ylabel('Scan position, [um]');
                     end                    
                 catch
@@ -721,8 +971,57 @@ classdef Scan < handle
                 end
                 title(['Average: ' obj.data_meta.sample_name ' | Scan ' num2str(obj.data_meta.scan_number)]);
             end
-        end   
+        end
         
+        function show_fluorescence(obj)
+            if obj.data_meta.detector_id == "xspress3"
+                try
+                    obj.average([3 4])
+                    plot(log(squeeze(obj.data_average(4,:))));
+                catch
+                    warning('Can not plot fluorescence');
+                end
+            else
+                warning('The data of the scan is not fluorescence data.');
+            end
+        end
+        
+        function show_scanmap(obj,coord)
+            if isempty(obj.data_integral)
+                obj.integrate([1,2])
+            end
+
+            try
+                figure();
+                imagesc(transpose(obj.data_integral)); % transpose to rotate map
+                colormap jet; colorbar;
+                
+                if nargin > 2
+                    xmin = coord(1);
+                    xmax = coord(2);
+                    ymin = coord(3);
+                    ymax = coord(4);
+                 
+                    % Axis
+                    tick_spacing = 10;
+                    xticks(1:tick_spacing:size(obj.data_integral,1)); % tick every 'tick_spacing' steps 
+                    dx = tick_spacing*(xmax-xmin)/size(obj.data_integral,1);
+                    xticklabels(round(xmin:dx:xmax,1)); %... which translates to tick every dx microns
+
+                    yticks(1:tick_spacing:size(obj.data_integral,2));
+                    dy = tick_spacing*(ymax-ymin)/size(obj.data_integral,2);
+                    yticklabels(round(ymin:dy:ymax,1));
+
+                    xlabel('Scan position [um]'); ylabel('Scan position [um]');
+                else
+                    xlabel('Scan position [px]'); ylabel('Scan position [px]');
+                end
+                    
+            catch
+                warning('Can not plot a scan map');
+            end
+            title(['Scan map: ' obj.data_meta.sample_name ' | Scan ' num2str(obj.data_meta.scan_number)]);
+        end
     end
     
     % Save methods
@@ -771,7 +1070,7 @@ classdef Scan < handle
             disp('Saving data to .mat ...');
             file_temp = [obj.data_meta.sample_name,'_',num2str(obj.data_meta.scan_number)];
             mkdir(fullfile(obj.data_meta.save_folder,file_temp));
-                        
+            
             if nargin>1
                 file_name = user_name;
             else
