@@ -324,7 +324,7 @@ classdef Scan < handle
                 switch obj.data_meta.mask_path(end-2:end)
                     case 'mat'
                         load(obj.data_meta.mask_path);
-                        obj.mask = mask;
+                        obj.mask = transpose(mask);
                     case 'tif'
                         obj.mask = single(imread(obj.data_meta.mask_path));
                 end
@@ -454,17 +454,17 @@ classdef Scan < handle
                 end
                 obj.log = [obj.log 'Applied mask. ']; 
                 disp('Mask applied!');
-            catch
-                warning('No mask specified or exists!');
-            end
+%             catch
+%                 warning('No mask specified or exists!');
+%             end
         end
         
         function correct_flux(obj)
-            try
+%             try
                 flux = openh5attribute(obj.data_meta.master_file_nanomax, sprintf('/entry%d/measurement/Ni6602_buff',obj.data_meta.scan_number));
                 
                 max_flux = max(max(flux));
-                relative_flux = flux./max_flux;
+                relative_flux = transpose(flux./max_flux);
                 
                 for i=1:size(obj.data,3)
                     for j=1:size(obj.data,4)
@@ -472,10 +472,10 @@ classdef Scan < handle
                     end
                 end
                 obj.log = [obj.log 'Flux correction. ']; 
-                disp('Data was corrected.')
-            catch
-                warning('The data was not corrected successfully.');
-            end
+                disp('Flux was corrected.')
+%             catch
+%                 warning('The data was not corrected successfully.');
+%             end
         end
         
         function shift = calculate_drift_shift(obj,Ix,Iy,direction)
@@ -548,9 +548,36 @@ classdef Scan < handle
                     end
                 end
             end
+            
+            %cutting the diffraction pattern and then scans
+            if direction == 'd0'
+                cut_counter = 0;
+                for i=1:size(cut_pixels,2)
+                    if cut_pixels(1,i) == -1 % every value of cut_pixels column = -1 if to be cut
+                        fprintf('Cutting column %d of scan %d \n',i,obj.data_meta.scan_number);
+                        obj.data(i-cut_counter,:,:,:) = [];
+                        disp('The new size is: ')
+                        disp(size(obj.data));
+                        cut_counter = cut_counter + 1;
+                    end
+                end
+            end
+            
+            if direction == 'd1' % better name would be nice
+                cut_counter = 0;
+                for i=1:size(cut_pixels,1)
+                    if cut_pixels(i,1) == -1 % every value of cut_pixels column = -1 if to be cut
+                        fprintf('Cutting column %d of scan %d \n',i,obj.data_meta.scan_number);
+                        obj.data(:,i-cut_counter,:,:) = [];
+                        disp('The new size is: ')
+                        disp(size(obj.data));
+                        cut_counter = cut_counter + 1;
+                    end
+                end
+            end
         end
         
-        function drift_align(obj,direction,shift,Ix,Iy)
+        function shift = drift_align(obj,direction,shift,Ix,Iy)
 %             try
                 if nargin == 2
                     Ix_end = size(obj.data,3);
