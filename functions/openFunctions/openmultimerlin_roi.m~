@@ -143,6 +143,8 @@ if data == 1
                     out = zeros([dataFullSize(1),dataFullSize(2),frameEnd - frameStart+1,EndIndex - StartIndex+1],'single');
                 case 'dmesh'
                     out = zeros([dataFullSize(1),dataFullSize(2),scan_meta.dim0,scan_meta.dim1],'single');
+                case 'series'
+                    
             end
         catch EM
             disp(EM)                                               ;
