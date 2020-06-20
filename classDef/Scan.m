@@ -454,9 +454,9 @@ classdef Scan < handle
                 end
                 obj.log = [obj.log 'Applied mask. ']; 
                 disp('Mask applied!');
-%             catch
-%                 warning('No mask specified or exists!');
-%             end
+            catch
+                warning('No mask specified or exists!');
+            end
         end
         
         function correct_flux(obj)
@@ -1004,7 +1004,7 @@ classdef Scan < handle
             if obj.data_meta.detector_id == "xspress3"
                 try
                     obj.average([3 4])
-                    plot(log(squeeze(obj.data_average(4,:))));
+                    plot(log10(squeeze(obj.data_average(4,:))));
                 catch
                     warning('Can not plot fluorescence');
                 end
@@ -1263,8 +1263,8 @@ classdef Scan < handle
                 axis image; colorbar('northoutside');                
                 title('Tilt, [deg]');xlabel('Scan position, [um]');ylabel('Scan position, [um]');
                 drawnow;
-%             end
+            end
         end
     end        
-end
+
 
