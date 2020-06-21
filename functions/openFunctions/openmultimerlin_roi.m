@@ -6,6 +6,7 @@ function out = openmultimerlin_roi(varargin)
 % --- open a block of images (lines). 
 % --- OUT = OPENMULTIEIGER4M(FILENAME,STARTINDEX,ENDINDEX,ROI)-- call to 
 % --- open an ROI of a block of images. 
+
 % --- OUT = OPENMULTIEIGER4M(FILENAME,ROI)-- call to 
 % --- open an ROI of all images. 
 % ---
@@ -14,7 +15,6 @@ function out = openmultimerlin_roi(varargin)
 % --- STARTINDEX  starting image index
 % --- ENDINDEX    ending image index
 % --- ROI         [roiYstart, roiYend, roiXstart, roiXend]
-% --- ROIextended [roiYstart, roiYend, roiXstart, roiXend, frameStart, frameEnd]
 
 % --- Output Argument
 % --- OUT  structure containing header & image block.
@@ -28,35 +28,31 @@ out = [];
 % =========================================================================
 % --- distinguish case used and create variable file
 % =========================================================================
-if ( nargin == 2 )
+if ( nargin == 1 )
     file               = varargin{1}                                       ;
-    scan_meta          = varargin{2}                                       ;
     StartIndex         = 1                                                 ;
     EndIndex           = inf                                               ;
     roiYstart          = 1                                                 ;
     roiXstart          = 1                                                 ;
     roiYrange          = inf                                               ;
     roiXrange          = inf                                               ;
-    frameStart         = 1                                                 ;
-    frameEnd           = inf                                               ;
     
-elseif ( nargin == 3 )
+elseif ( nargin == 2 )
     file               = varargin{1}                                       ;
-    scan_meta          = varargin{2}                                       ;
     StartIndex         = 1                                                 ;
     EndIndex           = inf                                               ;
-    roiYstart          = varargin{3}(1)                                    ;
-    roiYend            = varargin{3}(2)                                    ;
-    roiXstart          = varargin{3}(3)                                    ;
-    roiXend            = varargin{3}(4)                                    ;
+    roiYstart          = varargin{2}(1)                                    ;
+    roiYend            = varargin{2}(2)                                    ;
+    roiXstart          = varargin{2}(3)                                    ;
+    roiXend            = varargin{2}(4)                                    ;
     roiYrange          = roiYend - roiYstart + 1                           ;
     roiXrange          = roiXend - roiXstart + 1                           ;
     clear roiXend roiYend                                                  ;
-elseif ( nargin == 4 )
+    
+elseif ( nargin == 3 )
     file               = varargin{1}                                       ;
-    scan_meta          = varargin{2}                                       ;
-    StartIndex         = varargin{3}                                       ;
-    EndIndex           = varargin{4}                                       ;
+    StartIndex         = varargin{2}                                       ;
+    EndIndex           = varargin{3}                                       ;
     if StartIndex >= EndIndex
         dummy      = EndIndex                                              ;
         EndIndex   = StartIndex                                            ;
@@ -68,23 +64,20 @@ elseif ( nargin == 4 )
     roiYrange          = inf                                               ;
     roiXrange          = inf                                               ;
     
-elseif ( nargin == 5 )
+elseif ( nargin == 4 )
     file               = varargin{1}                                       ;
-    scan_meta          = varargin{2}                                       ;
-    StartIndex         = varargin{3}                                       ;
-    EndIndex           = varargin{4}                                       ;
+    StartIndex         = varargin{2}                                       ;
+    EndIndex           = varargin{3}                                       ;
     if StartIndex >= EndIndex
         dummy      = EndIndex                                              ;
         EndIndex   = StartIndex                                            ;
         StartIndex = dummy                                                 ;
         clear dummy                                                        ;
     end
-    roiYstart          = varargin{5}(1)                                    ;
-    roiYend            = varargin{5}(2)                                    ;
-    roiXstart          = varargin{5}(3)                                    ;
-    roiXend            = varargin{5}(4)                                    ;
-    frameStart         = varargin{5}(5)                                    ;
-    frameEnd           = varargin{5}(6)                                    ;
+    roiYstart          = varargin{4}(1)                                    ;
+    roiYend            = varargin{4}(2)                                    ;
+    roiXstart          = varargin{4}(3)                                    ;
+    roiXend            = varargin{4}(4)                                    ;
     
     roiYrange          = roiYend - roiYstart + 1                           ;
     roiXrange          = roiXend - roiXstart + 1                           ;
@@ -126,49 +119,24 @@ if data == 1
     dataInfo = h5info(file, '/entry/measurement/Merlin/data/')        ;
     
     % dataFullSize: [xDiff,yDiff,fastAxis,slowAxis]
-    dataFullSize  = [dataInfo.Dataspace.Size, length(fileInfo.Groups)]     ;
+    dataFullSize  = dataInfo.Dataspace.Size     ;
     
     if EndIndex == inf
-        EndIndex = dataFullSize(4)                              ; % set EndIndex to the chunk size
-    end
-    
-    if frameEnd == inf
-        frameEnd = dataFullSize(3)                              ; % set EndIndex to the chunk size
+        EndIndex = dataFullSize(3)                              ; % set EndIndex to the chunk size
     end
     
     if dataInfo.Dataspace.Size(3) >= StartIndex %&& dataInfo.Dataspace.Size(3) >= EndIndex                    
         try
-            switch scan_meta.type
-                case 'flyscan'
-                    out = zeros([dataFullSize(1),dataFullSize(2),frameEnd - frameStart+1,EndIndex - StartIndex+1],'single');
-                case 'dmesh'
-                    out = zeros([dataFullSize(1),dataFullSize(2),scan_meta.dim0,scan_meta.dim1],'single');
-            end
+            out = zeros([dataFullSize(1),dataFullSize(2),dataFullSize(3)],'single');
         catch EM
             disp(EM)                                               ;
             fprintf('Please load the data in smaller chunks! \n')     ;
             return                                                 ;
         end
         
-        for ii = 1 : EndIndex - StartIndex + 1
-            for jj = 1 : frameEnd - frameStart + 1                
-                out(:,:,jj,ii) = h5read(file,sprintf('/entry/measurement/Merlin/data/',StartIndex+ii-2),[roiXstart roiYstart frameStart+jj-1],[roiXrange roiYrange 1]);                
-            end
-            fprintf('Read line #%d \n',ii);
-        end
-        
-        if strcmp(scan_meta.type,'dmesh')
-            out_old = out;
-            clear out;
-            counter = 1;
-            for i=1:scan_meta.dim1 %21
-                for j=1:scan_meta.dim0 %41
-                    out(:,:,j,i) = out_old(:,:,1,counter);
-                    %fprintf('Moving datapoint %d to [%d,%d] \n',counter,j,i);
-                    counter = counter + 1;
-                end
-            end
-        end
+        for ii = 1 : EndIndex - StartIndex + 1           
+            out(:,:,ii) = h5read(file,'/entry/measurement/Merlin/data/',[roiXstart roiYstart StartIndex+ii-1],[roiXrange roiYrange 1]);                       
+        end                
         
         fprintf('Final data size [%d,%d,%d,%d] \n', size(out));
     else
@@ -176,7 +144,6 @@ if data == 1
         return
     end 
 end
-
 
 end
 
