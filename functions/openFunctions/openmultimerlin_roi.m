@@ -135,7 +135,8 @@ if data == 1
         end
         
         for ii = 1 : EndIndex - StartIndex + 1           
-            out(:,:,ii) = h5read(file,'/entry/measurement/Merlin/data/',[roiXstart roiYstart StartIndex+ii-1],[roiXrange roiYrange 1]);                       
+%             out(:,:,ii) = h5read(file,'/entry/measurement/Eiger/data',[roiXstart roiYstart StartIndex+ii-1],[roiXrange roiYrange 1]);                       
+            out(:,:,ii) = h5read(file,'/entry/measurement/Merlin/data',[roiXstart roiYstart StartIndex+ii-1],[roiXrange roiYrange 1]);                       
         end                
         
         fprintf('Final data size [%d,%d,%d,%d] \n', size(out));

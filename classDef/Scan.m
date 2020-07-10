@@ -89,7 +89,7 @@ classdef Scan < handle
                             warning('no path!use user path input');
                         end
                     else
-                        main_dir = user_path;
+                        main_dir = path;
                     end
                     
                     for jj = 1:numel(scan.data_meta.scan_number)                        
@@ -97,6 +97,30 @@ classdef Scan < handle
                     end
                 
             end
+        end
+        
+        function create_mask_projection(scan)           
+            for jj = 3:-1:1
+                hF = figure;
+                hAx = axes('Parent',hF);
+                imagesc(log10(squeeze(sum(scan.data,jj))));
+
+                hROI = drawfreehand(hAx);
+                mask = createMask(hROI);                                
+                mask = abs(mask-1);
+                
+                for ii = 1:size(scan.data,jj)      
+                    if jj == 3
+                        scan.data(:,:,ii) = scan.data(:,:,ii).*mask;
+                    elseif jj == 2
+                        scan.data(:,ii,:) = squeeze(scan.data(:,ii,:)).*mask;
+                    elseif jj == 1
+                        scan.data(ii,:,:) = squeeze(scan.data(ii,:,:)).*mask;
+                    end
+                end
+                clear mask
+                close;
+            end                                   
         end
         
         function create_mask(scan,dim)
@@ -121,10 +145,6 @@ classdef Scan < handle
                 dim = '3D';
             end
             switch dim
-                case '2D'
-                    for jj = 1:size(scan.data,4)
-                        jj
-                    end
                 case '3D'   
                     flag_exit       = 0;
                     hF = figure('keypressfcn',@f_capturekeystroke);
@@ -133,7 +153,7 @@ classdef Scan < handle
                     for jj = 1:size(scan.data,4)
                         if flag_exit
                             return;
-                        else
+                        else                           
                             for ii = 1:size(scan.data,3)   
                                 if flag_exit
                                     return;
@@ -143,7 +163,7 @@ classdef Scan < handle
                                     flag_control    = 0;
                                     scan.mask(:,:,ii,jj) = zeros(size(scan.data(:,:,ii,jj)));
                                     while ~flag_next_frame & ~flag_exit                                                                                
-                                        imagesc((scan.data(:,:,ii,jj)),[0 1]);
+                                        imagesc((scan.data(:,:,ii,jj)));
                                         axis image;
                                         colormap hot;
                                         colormap jet;
@@ -183,6 +203,7 @@ classdef Scan < handle
                 close(hF);
             end
         end
+        
         
         function read_tif(scan)
             try
@@ -227,7 +248,7 @@ classdef Scan < handle
                 switch scan.data_meta.mask_path(end-2:end)
                     case 'mat'
                         load(scan.data_meta.mask_path);
-                        scan.mask = mask;
+                        scan.mask = single(mask);
                     case 'tif'
                         scan.mask = single(imread(scan.data_meta.mask_path));
                 end
@@ -337,8 +358,15 @@ classdef Scan < handle
         function correct_mask(scan)
             disp('### Masking the data ###');
             try
-                scan.data = scan.data.*scan.mask;
-                disp('Mask applied!');
+                if ndims(scan.mask) == 3
+                    scan.data = scan.data.*scan.mask;
+                    disp('3D Mask applied!');
+                elseif ismatrix(scan.mask)
+                    for ii = 1:size(scan.data,3)                        
+                        scan.data(:,:,ii) = scan.data(:,:,ii).*scan.mask;
+                    end
+                    disp('2D Mask applied!');
+                end
             catch
                 warning('No mask specified or exists!');
             end
@@ -371,16 +399,26 @@ classdef Scan < handle
             scan.crop_flag = 1;
         end
         
-        function crop_auto(scan)
+        function crop_auto(scan,value)
             % Find the center of mass
-            com = ndimCOM(scan.data,'auto');
-            % Minimum windows in each dimension
-            window = floor(min(com,size(scan.data)-com));
-            window(1:2) = min(window(1),window(2));
-            scan.data_cropped = scan.data(com(1)-window(1)+1:com(1)+window(1),...
-                                            com(2)-window(2)+1:com(2)+window(2),...
-                                            com(3)-window(3)+1:com(3)+window(3));
-        end
+            if strcmp(value,'com')
+                scan.average(3);
+                com = ndimCOM(scan.data_average,'auto');
+                % Minimum windows in each dimension
+                window = floor(min(com,size(scan.data_average)-com));
+                window(1:2) = min(window(1),window(2));
+                scan.data_cropped = scan.data(round(com(1)-window(1)/2+1):round(com(1)+window(1)/2),...
+                                                round(com(2)-window(2)/2+1):round(com(2)+window(2)/2),:);
+            elseif strcmp(value,'max')
+                scan.average(3);
+                [x,y] = find(scan.data_average==max(max(scan.data_average)));
+                % Minimum windows in each dimension
+                window = floor(min([x,y],size(scan.data_average)-[x,y]));
+                window(1:2) = min(window(1),window(2));
+                scan.data_cropped = scan.data(round(x-window(1)/2+1):round(x+window(1)/2),...
+                                                round(y-window(2)/2+1):round(y+window(2)/2),:);
+            end
+        end               
         
         function correct_hot_pixel(scan,x,y,interpolate)
             disp('### Hot-pixels correction ###');
@@ -604,12 +642,13 @@ classdef Scan < handle
         end
         
         function show_data_scroll(scan,scale,max_val)
-            if ~exist('scale')
+            if nargin == 1
                 scale = 'log';
             end
             
             if nargin == 2
-                average(scan);
+                scale = 'log';
+                scan.average(3);                
                 max_val = mean(scan.data_average(:))*.5;
             end
             
