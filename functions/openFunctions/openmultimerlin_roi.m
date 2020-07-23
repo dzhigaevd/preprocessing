@@ -119,7 +119,7 @@ if data == 1
     dataInfo = h5info(file, '/entry/measurement/Merlin/data/')        ;
     
     % dataFullSize: [xDiff,yDiff,fastAxis,slowAxis]
-    dataFullSize  = dataInfo.Dataspace.Size     ;
+    dataFullSize  = dataInfo.Dataspace.Size;
     
     if EndIndex == inf
         EndIndex = dataFullSize(3)                              ; % set EndIndex to the chunk size

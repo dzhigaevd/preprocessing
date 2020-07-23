@@ -21,6 +21,7 @@ classdef Scan < handle
 
     properties
         data;
+        motor_positions;
         mask;    
         crop_flag = 0;
         white_field;
@@ -32,7 +33,7 @@ classdef Scan < handle
         data_cropped;
         data_3d;
         data_integral;
-        data_meta;           
+        data_meta;         
         STXMmap;
     end
     
@@ -82,12 +83,8 @@ classdef Scan < handle
                     end
                     
                 case 'nanomax'
-                    if nargin == 1
-                        if scan.data_meta.onsite  % NanoMAx option                            
-                            main_dir =  fullfile(scan.data_meta.pre_path_data, scan.data_meta.sample_name);
-                        else
-                            warning('no path!use user path input');
-                        end
+                    if nargin == 1                            
+                        main_dir =  fullfile(scan.data_meta.pre_path_data, scan.data_meta.beamtime_id, 'raw', scan.data_meta.sample_name);
                     else
                         main_dir = path;
                     end
@@ -203,8 +200,7 @@ classdef Scan < handle
                 close(hF);
             end
         end
-        
-        
+                
         function read_tif(scan)
             try
                 for jj = 1:numel(scan.data_meta.scan_number)
@@ -219,8 +215,19 @@ classdef Scan < handle
             end
         end   
         
-        function read_nanomax_merlin(scan)            
-            try
+        function read_nanomax_data(scan,type) 
+            if strcmp(type,'bin')
+                fid = fopen([scan.data_meta.scan(1).file.name(1:end-4),'bin'],'rb');
+                scan.data = fread(fid);
+                fclose(fid);
+                fprintf('Loaded: %d \n',kk)
+                
+            elseif strcmp(type,'mat')
+                load([scan.data_meta.scan(1).file.name(1:end-4),'mat']);
+                scan.data = single(data);       
+                 fprintf('Loaded: %s \n',[scan.data_meta.scan(1).file.name(1:end-4),'mat'])
+                 
+            elseif strcmp(type,'hh5')
                 % Extract scan information first                
                 try                
                     for kk = 1:numel(scan.data_meta.scan_number)  
@@ -237,8 +244,8 @@ classdef Scan < handle
                 catch
                     error('No master file!')
                 end
-            catch
-                error('Can not load the data!')
+            else
+                warning('Undefined or wrong file format!')
             end
         end
         
@@ -644,11 +651,11 @@ classdef Scan < handle
         function show_data_scroll(scan,scale,max_val)
             if nargin == 1
                 scale = 'log';
+                max_val = mean(scan.data_average(:))*.5;
             end
             
-            if nargin == 2
-                scale = 'log';
-                scan.average(3);                
+            if nargin == 2                
+                scan.average(3);                    
                 max_val = mean(scan.data_average(:))*.5;
             end
             
@@ -669,8 +676,8 @@ classdef Scan < handle
             end
             handle.Visual.ColorMap.MapExpression = 'hot'; 
             handle.Visual.ColorMap.UserRangeMin = 0.1;
-            handle.Visual.ColorMap.UserRangeMax = max_val;
-            handle.Visual.ColorMap.UserRange = max_val;
+%             handle.Visual.ColorMap.UserRangeMax = max_val;
+%             handle.Visual.ColorMap.UserRange = max_val;
         end                       
         
         function handles = show_data_single(scan, scale, index)
