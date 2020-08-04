@@ -21,8 +21,11 @@ classdef Scan < handle
 
     properties
         data;
+        q_space;
         motor_positions;
-        mask;    
+        direct_beam_position;
+        roi; % crop of the original dataset
+        mask; % masking of aliens (3D)   
         crop_flag = 0;
         white_field;
         dark_field;
@@ -225,27 +228,30 @@ classdef Scan < handle
             elseif strcmp(type,'mat')
                 load([scan.data_meta.scan(1).file.name(1:end-4),'mat']);
                 scan.data = single(data);       
-                 fprintf('Loaded: %s \n',[scan.data_meta.scan(1).file.name(1:end-4),'mat'])
+                fprintf('Loaded: %s \n',[scan.data_meta.scan(1).file.name(1:end-4),'mat'])
                  
             elseif strcmp(type,'hh5')
-                % Extract scan information first                
-                try                
-                    for kk = 1:numel(scan.data_meta.scan_number)  
-                        if scan.data_meta.crop_flag
-                            scan.data = openmultimerlin_roi(scan.data_meta.scan(kk).file.name,...
-                                                            scan.data_meta.start_row,...
-                                                            scan.data_meta.end_row,...
-                                [scan.data_meta.roi(1),scan.data_meta.roi(2),scan.data_meta.roi(3),scan.data_meta.roi(4),scan.data_meta.start_column,scan.data_meta.end_column]);
-                        else
-                            scan.data = openmultimerlin_roi(scan.data_meta.scan(kk).file.name);
-                        end
-                        fprintf('Loaded: %d \n',kk)
-                    end
-                catch
-                    error('No master file!')
-                end
+                error('Not implemented!')
             else
                 warning('Undefined or wrong file format!')
+            end
+        end
+        
+        function read_nanomax_motorpositions(scan)
+            % Extract scan information first                
+            disp('Only gonphi scan is implemented!')
+            try                                
+                master_file_path = [scan.data_meta.scan(1).file.name(1:end-23),sprintf('%06i.h5',scan.data_meta.scan_number(1))];
+                scan.motor_positions.delta = h5read(master_file_path,'/entry/snapshot/delta');
+                scan.motor_positions.gamma = h5read(master_file_path,'/entry/snapshot/gamma');
+                scan.motor_positions.theta = h5read(master_file_path,'/entry/snapshot/gontheta');
+                scan.motor_positions.radius = h5read(master_file_path,'/entry/snapshot/radius')*1e-3;
+                scan.motor_positions.energy = h5read(master_file_path,'/entry/snapshot/energy');
+                % Scan motor
+                scan.motor_positions.phi = h5read(master_file_path,'/entry/measurement/gonphi');
+                fprintf('Loaded: %s \n',master_file_path)                
+            catch
+                error('No master file!')
             end
         end
         
@@ -451,9 +457,8 @@ classdef Scan < handle
         end        
         
         function average(scan,dimsAverage)
-            disp('### Averaging the data ###');            
+            sprintf('### Averaging the data along the %d dimension ###',dimsAverage);            
             try  
-%                 clear data_average;
                 scan.data_average = squeeze(mean(scan.data,dimsAverage));                                  
             catch
                 disp('Data not-averaged!');
@@ -703,10 +708,14 @@ classdef Scan < handle
             title([scan.data_meta.sample_name ' | Scan ' num2str(scan.data_meta.scan_number) ' | Frame ' num2str(index)]);
         end                
         
-        function handles = show_data_average(scan,scale)
+        function handles = show_data_average(scan,scale, dimension)
             if ~exist('scale')
-                scale = 'lin';
+                scale = 'log';
             end
+            if ~exist('dimension')
+                dimension = 3;
+            end
+            scan.average(dimension);
             
             handles.figHandle = figure;            
             
