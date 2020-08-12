@@ -38,6 +38,7 @@ classdef Scan < handle
         data_integral;
         data_meta;         
         STXMmap;
+        reconstruction;
     end
     
     % - Constructor of the object -
@@ -604,6 +605,8 @@ classdef Scan < handle
                 disp('Data not-minimized!');
             end
         end
+        
+        
     end
     
     % Show methods
