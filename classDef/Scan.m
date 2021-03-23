@@ -21,11 +21,9 @@ classdef Scan < handle
 
     properties
         data;
-        q_space;
-        motor_positions;
-        direct_beam_position;
-        roi; % crop of the original dataset
-        mask; % masking of aliens (3D)   
+        data_flags; % flags for recording what has been done to original data 
+        monitor;
+        mask;    
         crop_flag = 0;
         white_field;
         dark_field;
@@ -36,16 +34,33 @@ classdef Scan < handle
         data_cropped;
         data_3d;
         data_integral;
-        data_meta;         
+        data_meta;
+        data_spec;
         STXMmap;
-        reconstruction;
     end
     
     % - Constructor of the object -
     methods
         function scan = Scan(input_param)   
-            if nargin == 1
-                scan.data_meta      = input_param;                              
+            try
+                if nargin == 1
+                    scan.data_meta      = input_param; 
+                    scan.data_flags.normalize_by_monitor = [];
+                    scan.data_flags.correct_dark_field = [];
+                    scan.data_flags.correct_white_field = [];
+                end
+
+                if strcmp(scan.data_meta.beamline_id,'34idc') 
+                    if ~isempty(scan.data_meta.master_file)
+                        [motname, motval, scanV, val_moved, moved_motnames] = getSpecInfo(scan.data_meta.master_file, scan.data_meta.scan_number);
+                        scan.data_spec.motor_names = moved_motnames;
+                        scan.data_spec.motor_values = val_moved;
+                        disp('+ Spec data is extracted!')
+                    end
+                end
+                disp('+ Scan object is successfully created!')
+            catch
+                warning('- Scan object could not be created! Check constructor.')
             end
         end
     end    
@@ -76,8 +91,7 @@ classdef Scan < handle
                     end
 
                     for jj = 1:numel(scan.data_meta.scan_number)
-                        master_folder = fullfile(main_dir, [scan.data_meta.beamtime_prefix '_' ...
-                                                 scan.data_meta.sample_name 'S' sprintf('%04i',scan.data_meta.scan_number(jj))]);
+                        master_folder = fullfile(main_dir, [scan.data_meta.sample_name 'S' sprintf('%04i',scan.data_meta.scan_number(jj))]);
 
                         t = dir(fullfile(master_folder,'*.tif'));
 
@@ -87,8 +101,12 @@ classdef Scan < handle
                     end
                     
                 case 'nanomax'
-                    if nargin == 1                            
-                        main_dir =  fullfile(scan.data_meta.pre_path_data, scan.data_meta.beamtime_id, 'raw', scan.data_meta.sample_name);
+                    if nargin == 1
+                        if scan.data_meta.onsite  % NanoMAx option                            
+                            main_dir =  fullfile(scan.data_meta.pre_path_data, scan.data_meta.sample_name);
+                        else
+                            warning('- no path!use user path input');
+                        end
                     else
                         main_dir = path;
                     end
@@ -99,6 +117,7 @@ classdef Scan < handle
                 
             end
         end
+        
         
         function create_mask_projection(scan)           
             for jj = 3:-1:1
@@ -163,11 +182,14 @@ classdef Scan < handle
                                     flag_next_frame = 0;  
                                     flag_control    = 0;
                                     scan.mask(:,:,ii,jj) = zeros(size(scan.data(:,:,ii,jj)));
-                                    while ~flag_next_frame & ~flag_exit                                                                                
-                                        imagesc((scan.data(:,:,ii,jj)));
+                                    while ~flag_next_frame & ~flag_exit 
+                                        imagesc(log10(scan.data_average)); 
+                                        handles.imHandle = imagesc((scan.data(:,:,ii,jj)));
                                         axis image;
-                                        colormap hot;
-                                        colormap jet;
+                                        handles.colorBar = colorbar;
+                                        ylabel(handles.colorBar,'linear scale');
+%                                         colormap(scan.data_meta.colormap);
+                                        colormap jet
                                         title({[scan.data_meta.sample_name ' | Scan '...
                                                num2str(scan.data_meta.scan_number(jj)) ' | Frame ' ...
                                                num2str(ii)], 'Space - next frame | Ctrl - mask | Esc - exit'});
@@ -189,9 +211,7 @@ classdef Scan < handle
                                                     break;
                                                 end
                                             end
-                                        end
-
-                                                                       
+                                        end                                   
                                     end 
                                     scan.mask(:,:,ii,jj) = scan.mask(:,:,ii,jj)>0;
                                     disp('Mask frame recorded!');
@@ -204,7 +224,8 @@ classdef Scan < handle
                 close(hF);
             end
         end
-                
+        
+        
         function read_tif(scan)
             try
                 for jj = 1:numel(scan.data_meta.scan_number)
@@ -219,40 +240,26 @@ classdef Scan < handle
             end
         end   
         
-        function read_nanomax_data(scan,type) 
-            if strcmp(type,'bin')
-                fid = fopen([scan.data_meta.scan(1).file.name(1:end-4),'bin'],'rb');
-                scan.data = fread(fid);
-                fclose(fid);
-                fprintf('Loaded: %d \n',kk)
-                
-            elseif strcmp(type,'mat')
-                load([scan.data_meta.scan(1).file.name(1:end-4),'mat']);
-                scan.data = single(data);       
-                fprintf('Loaded: %s \n',[scan.data_meta.scan(1).file.name(1:end-4),'mat'])
-                 
-            elseif strcmp(type,'hh5')
-                error('Not implemented!')
-            else
-                warning('Undefined or wrong file format!')
-            end
-        end
-        
-        function read_nanomax_motorpositions(scan)
-            % Extract scan information first                
-            disp('Only gonphi scan is implemented!')
-            try                                
-                master_file_path = [scan.data_meta.scan(1).file.name(1:end-23),sprintf('%06i.h5',scan.data_meta.scan_number(1))];
-                scan.motor_positions.delta = h5read(master_file_path,'/entry/snapshot/delta');
-                scan.motor_positions.gamma = h5read(master_file_path,'/entry/snapshot/gamma');
-                scan.motor_positions.theta = h5read(master_file_path,'/entry/snapshot/gontheta');
-                scan.motor_positions.radius = h5read(master_file_path,'/entry/snapshot/radius')*1e-3;
-                scan.motor_positions.energy = h5read(master_file_path,'/entry/snapshot/energy');
-                % Scan motor
-                scan.motor_positions.phi = h5read(master_file_path,'/entry/measurement/gonphi');
-                fprintf('Loaded: %s \n',master_file_path)                
+        function read_nanomax_merlin(scan)            
+            try
+                % Extract scan information first                
+                try                
+                    for kk = 1:numel(scan.data_meta.scan_number)  
+                        if scan.data_meta.crop_flag
+                            scan.data = openmultimerlin_roi(scan.data_meta.scan(kk).file.name,...
+                                                            scan.data_meta.start_row,...
+                                                            scan.data_meta.end_row,...
+                                [scan.data_meta.roi(1),scan.data_meta.roi(2),scan.data_meta.roi(3),scan.data_meta.roi(4),scan.data_meta.start_column,scan.data_meta.end_column]);
+                        else
+                            scan.data = openmultimerlin_roi(scan.data_meta.scan(kk).file.name);
+                        end
+                        fprintf('Loaded: %d \n',kk)
+                    end
+                catch
+                    error('No master file!')
+                end
             catch
-                error('No master file!')
+                error('Can not load the data!')
             end
         end
         
@@ -281,10 +288,16 @@ classdef Scan < handle
                     case 'tif'
                         scan.white_field = single(imread(scan.data_meta.white_field_path));
                 end
-%                 scan.white_field(scan.white_field < 6000) = 1e25;
-                disp('### White field loaded ###');
+                
+                try
+                    scan.white_field = scan.white_field(scan.data_meta.roi(3):scan.data_meta.roi(4),scan.data_meta.roi(1):scan.data_meta.roi(2));
+                catch
+                    warning('The ROI of the data is not defined! Proceed with full detector.')
+                end
+                scan.white_field(scan.white_field < 6000) = 1e25;
+                disp('+ White field loaded');
             catch
-                warning('No white field specified!');
+                warning('- No white field specified!');
             end
         end
         
@@ -297,22 +310,23 @@ classdef Scan < handle
                     case 'tif'
                         scan.dark_field = single(imread(scan.data_meta.dark_field_path));
                 end
-                disp('### Dark field loaded ###');
+                
+                try
+                    scan.dark_field = scan.dark_field(scan.data_meta.roi(3):scan.data_meta.roi(4),scan.data_meta.roi(1):scan.data_meta.roi(2));
+                catch
+                    warning('The ROI of the data is not defined! Proceed with full detector.')
+                end
+                
+                disp('+ Dark field loaded');
             catch
-                warning('No dark field specified!');
+                warning('- No dark field specified!');
             end
         end        
         
-        function read_beam_current(scan)
-             switch scan.data_meta.beamline_id                
-                case 'nanomax'
-                    scan.data_meta.nanomax.beam_current = h5read(scan.data_meta.master_file_nanomax,sprintf('/entry%d/measurement/beam_current/',scan.data_meta.scan_number));
-             end
-        end
-        
         function correct_low_cutoff(scan)
             scan.data(scan.data<=scan.data_meta.low_cutoff) = 0;
-            disp('Data was low-tresholded');
+            scan.data_flags.low_cutoff = 1;
+            disp('+ Data was low-tresholded');
         end
         
         function correct_dark_field(scan)
@@ -325,13 +339,20 @@ classdef Scan < handle
                             t(scan.dark_field>1) = 0;
                             scan.data(:,:,ii,jj) = t;                                
                         end
-                        fprintf('Processign Scan #%d\n',jj);
+                        fprintf('+ Processed Scan #%d\n',jj);
                     end
-                    disp('Data corrected by dark field!')
+                    
+                    if isempty(scan.data_flags.correct_dark_field)
+                        scan.data_flags.correct_dark_field = 1;
+                    else
+                        scan.data_flags.correct_dark_field = scan.data_flags.correct_dark_field+1;
+                    end
+                    
+                    disp('+ Data corrected by dark field!')
                 elseif ~isempty(scan.dark_field) & size(scan.data(:,:,1))~=size(scan.dark_field)
-                    error('Dark field size does not match data size!')
+                    error('- Dark field size does not match data size!')
                 elseif isempty(scan.dark_field)
-                    error('No dark field!')
+                    error('- No dark field!')
                 end
             catch
                 if ndims(scan.data) ~= 3
@@ -354,11 +375,18 @@ classdef Scan < handle
                         end
                         fprintf('Processing Scan #%d\n',jj);
                     end
-                    disp('Data corrected by white field!')
+                                        
+                    if isempty(scan.data_flags.correct_white_field)
+                        scan.data_flags.correct_white_field = 1;
+                    else
+                        scan.data_flags.correct_white_field = scan.data_flags.correct_white_field+1;
+                    end
+                    
+                    disp('+ Data corrected by white field!')
                 elseif ~isempty(scan.white_field) & size(scan.data(:,:,1))~=size(scan.white_field)
-                    error('White field size does not match data size!')
+                    error('- White field size does not match data size!')
                 elseif isempty(scan.white_field)
-                    error('No White field!')
+                    error('- No White field!')
                 end
             catch
                 if ndims(scan.data) ~= 3
@@ -374,29 +402,15 @@ classdef Scan < handle
             try
                 if ndims(scan.mask) == 3
                     scan.data = scan.data.*scan.mask;
-                    disp('3D Mask applied!');
+                    disp('+ 3D Mask applied!');
                 elseif ismatrix(scan.mask)
                     for ii = 1:size(scan.data,3)                        
                         scan.data(:,:,ii) = scan.data(:,:,ii).*scan.mask;
                     end
-                    disp('2D Mask applied!');
+                    disp('+ 2D Mask applied!');
                 end
             catch
-                warning('No mask specified or exists!');
-            end
-        end
-        
-        function correct_mask_nanomax(scan)
-            disp('### Masking the data ###');
-            try
-                for ii =1:size(scan.data,3)
-                    for jj =1:size(scan.data,4)
-                        scan.data(:,:,ii,jj) = scan.data(:,:,ii,jj).*single(scan.mask);
-                    end
-                end
-                disp('Mask applied!');
-            catch
-                warning('No mask specified or exists!');
+                warning('- No mask specified or exists!');
             end
         end
         
@@ -409,7 +423,7 @@ classdef Scan < handle
                     scan.data_crop(:,:,ii,jj) = imcrop(squeeze(scan.data(:,:,ii,jj)),hRect.Position);
                 end
             end
-            figure; imagesc(log10(squeeze(mean(mean(scan.data_crop,4),3)))); colormap jet; axis image;
+            figure; imagesc(log10(squeeze(mean(mean(scan.data_crop,4),3)))); colormap(scan.data_meta.colormap); axis image;
             scan.crop_flag = 1;
         end
         
@@ -438,7 +452,7 @@ classdef Scan < handle
             disp('### Hot-pixels correction ###');
             if ~interpolate
                 scan.data(x,y,:,:) = 0;
-                fprintf('Hot pixel [x:%d y:%d] zeroed!\n',x,y);
+                fprintf('+ Hot pixel [x:%d y:%d] zeroed!\n',x,y);
             else               
                 for jj = 1:size(scan.data,4)
                     for ii = 1:size(scan.data,3)
@@ -453,14 +467,18 @@ classdef Scan < handle
                         end
                     end
                 end                                
-                fprintf('Hot pixel [x:%d y:%d] interpolated!\n',x,y);
+                fprintf('+ Hot pixel [x:%d y:%d] interpolated!\n',x,y);
             end                
         end        
         
         function average(scan,dimsAverage)
-            sprintf('### Averaging the data along the %d dimension ###',dimsAverage);            
+            if nargin == 1
+                dimsAverage = 3;
+            end
+            
             try  
                 scan.data_average = squeeze(mean(scan.data,dimsAverage));                                  
+                fprintf('Data averaged along dimension: %s \n',num2str(dimsAverage));            
             catch
                 disp('Data not-averaged!');
             end                
@@ -539,18 +557,43 @@ classdef Scan < handle
             end           
         end
         
+        function normalize_by_monitor(scan)
+            if strcmp(scan.data_meta.beamline_id,'34idc')
+                if ~isempty(scan.data_spec)
+                    monitor_val = scan.data_spec.motor_values(:,strcmp(scan.data_spec.motor_names, scan.data_meta.monitor_name));
+                    
+                    if scan.data_meta.god_mode
+                        figure; plot(monitor_val,'-s'); title('Beam monitor'); ylabel('Flux');
+                    end
+                    
+                    for ii = 1:size(scan.data,3)
+                        scan.data(:,:,ii) = scan.data(:,:,ii)./monitor_val(ii);
+                    end
+                    disp('+ Data is normalized by 34idc monitor.');
+                    
+                    if ~isempty(scan.data_flags.normalize_by_monitor)
+                        scan.data_flags.normalize_by_monitor = 1;
+                    else
+                        scan.data_flags.normalize_by_monitor = scan.data_flags.normalize_by_monitor+1;
+                    end
+                else
+                    disp('- No spec data found! Data is not normalized.');
+                end
+            end
+        end
+        
         function normalize_exposure(scan)
             disp('### Normalizing the data by exposure time ###');
             if ~isempty(scan.data_meta.exposure)
                 scan.data = scan.data./scan.data_meta.exposure;
-                fprintf('Data is normalized by exposure: %.3f s\n', scan.data_meta.exposure);
+                fprintf('+ Data is normalized by exposure: %.3f s\n', scan.data_meta.exposure);
                 if isempty(scan.data_meta.dead_time)
                     scan.data_meta.dead_time = 0 ;
                 end
                 scan.data = scan.data./(1-scan.data_meta.dead_time.*scan.data);
-                fprintf('Data is normalized by dead time: %.3e s\n', scan.data_meta.dead_time);                
+                fprintf('+ Data is normalized by dead time: %.3e s\n', scan.data_meta.dead_time);                
             else
-                error('Exposure time is missing. Skipping...')
+                error('- Exposure time is missing. Skipping...')
             end
         end
         
@@ -566,9 +609,9 @@ classdef Scan < handle
             disp('### Integrating the data ###');            
             try
                 scan.data_integral = squeeze(sum(scan.data,dimsIntegrate));
-                fprintf('Dimensions integrated: \n %d \n',dimsIntegrate);
+                fprintf('+ Dimensions integrated: \n %d \n',dimsIntegrate);
             catch
-                disp('Data not-integrated!');
+                disp('- Data not-integrated!');
             end
         end 
         
@@ -577,7 +620,7 @@ classdef Scan < handle
             try
                 if ndims(scan.data) == 4                
                     scan.data_max = squeeze(sum(sum(squeeze(sum(scan.data,3)),1),2));
-                    disp('Data integrated sown to 3D!');
+                    disp('+ Data integrated down to 3D!');
                 else
                     for ii = 1:size(scan.data,3)
                         scan.data_max(ii) = squeeze(max(max(scan.data(:,:,ii))));                        
@@ -593,7 +636,7 @@ classdef Scan < handle
             try
                 if ndims(scan.data) == 4                
                     scan.data_max = squeeze(sum(sum(squeeze(sum(scan.data,3)),1),2));
-                    disp('Data integrated sown to 3D!');
+                    disp('+ Data integrated sown to 3D!');
                 else
                     for ii = 1:size(scan.data,3)                        
                         m = double(scan.data(:,:,ii)>0);
@@ -602,11 +645,9 @@ classdef Scan < handle
                     end
                 end                
             catch
-                disp('Data not-minimized!');
+                disp('- Data not-minimized!');
             end
         end
-        
-        
     end
     
     % Show methods
@@ -626,7 +667,7 @@ classdef Scan < handle
                 figure;            
                 imagesc(scan.dark_field);
                 axis image;
-                colormap jet;
+                colormap(scan.data_meta.colormap)
                 colorbar;
                 title('Dark field');
             catch
@@ -637,7 +678,7 @@ classdef Scan < handle
         function show_white_field(scan)
             try
                 figure;            
-                imagesc(scan.white_field);axis image;colormap jet;colorbar
+                imagesc(scan.white_field);axis image;colormap(scan.data_meta.colormap);colorbar
                 title('White field');
             catch
                 error('No white field!')
@@ -659,11 +700,11 @@ classdef Scan < handle
         function show_data_scroll(scan,scale,max_val)
             if nargin == 1
                 scale = 'log';
-                max_val = mean(scan.data_average(:))*.5;
             end
             
-            if nargin == 2                
-                scan.average(3);                    
+            if nargin == 2
+                scale = 'log';
+                scan.average(3);                
                 max_val = mean(scan.data_average(:))*.5;
             end
             
@@ -682,18 +723,18 @@ classdef Scan < handle
                         handle = implay(scan.data);
                 end
             end
-            handle.Visual.ColorMap.MapExpression = 'hot'; 
+            handle.Visual.ColorMap.MapExpression = scan.data_meta.colormap; 
             handle.Visual.ColorMap.UserRangeMin = 0.1;
-%             handle.Visual.ColorMap.UserRangeMax = max_val;
-%             handle.Visual.ColorMap.UserRange = max_val;
+            handle.Visual.ColorMap.UserRangeMax = max_val;
+            handle.Visual.ColorMap.UserRange = max_val;
         end                       
         
-        function handles = show_data_single(scan, scale, index)
+        function handles = show_data_single(scan, index, scale)
             if nargin == 1
                 index = 1;
                 scale = 'lin';
             elseif nargin == 2
-                index = 1;
+                scale = 'lin';
             end
             handles.figHandle = figure;
             switch scale
@@ -707,36 +748,34 @@ classdef Scan < handle
             end
             axis image;            
             
-            colormap jet;
+            colormap(scan.data_meta.colormap);
             title([scan.data_meta.sample_name ' | Scan ' num2str(scan.data_meta.scan_number) ' | Frame ' num2str(index)]);
         end                
         
-        function handles = show_data_average(scan,scale, dimension)
+        function handles = show_data_average(scan,scale)
             if ~exist('scale')
-                scale = 'log';
+                scale = 'lin';
             end
-            if ~exist('dimension')
-                dimension = 3;
-            end
-            scan.average(dimension);
             
             handles.figHandle = figure;            
             
-            try 
+            if ~isempty(scan.data_average) 
                 switch scale
                     case 'log'
                         handles.imHandle = imagesc(log10(scan.data_average)); 
                         handles.colorBar = colorbar;
-                        ylabel(handles.colorBar,'log');
+                        ylabel(handles.colorBar,'log-scale');
                     case 'lin'
-                        handles.imHandle = imagesc(scan.data_average);            
+                        handles.imHandle = imagesc(scan.data_average);    
+                        handles.colorBar = colorbar;
+                        ylabel(handles.colorBar,'linear scale');
                 end
                 axis image;            
 
-                colormap jet;
+                colormap(scan.data_meta.colormap);
                 title(['Average: ' scan.data_meta.sample_name ' | Scan ' num2str(scan.data_meta.scan_number)]);
-            catch
-                warning('Average data first!');
+            else
+                warning('Average data first: scan.average(dimension)');
             end
         end
         
@@ -782,21 +821,21 @@ classdef Scan < handle
     
     % Save methods
     methods
-        function save_gif(scna,user_name)
+        function save_gif(scan,user_name)
             disp('Saving GIF animation...');
-            file_temp = [scna.data_meta.sample_name,'_',num2str(scna.data_meta.scan_number)];
-            mkdir(fullfile(scna.data_meta.save_folder,file_temp));            
+            file_temp = [scan.data_meta.sample_name,'_',num2str(scan.data_meta.scan_number)];
+            mkdir(fullfile(scan.data_meta.save_folder,file_temp));            
             if nargin>1
-                gif_name = fullfile(scna.data_meta.save_folder,file_temp,[user_name '.gif']);
+                gif_name = fullfile(scan.data_meta.save_folder,file_temp,[user_name '.gif']);
             else                
-                gif_name = fullfile(scna.data_meta.save_folder,file_temp,[scna.data_meta.sample_name,'_',num2str(scna.data_meta.scan_number),'.gif']);
+                gif_name = fullfile(scan.data_meta.save_folder,file_temp,[scan.data_meta.sample_name,'_',num2str(scan.data_meta.scan_number),'.gif']);
             end
             f1 = figure;
-            for ii = 1:size(scna.data,3)                
-                imagesc(log10(squeeze(scna.data(:,:,ii))));
-                colormap hot; axis image; %caxis([0.1 0.8]);
-                title([scna.data_meta.sample_name ' | Scan ' num2str(scna.data_meta.scan_number) ' | Frame ' num2str(ii)]);           
-                GIFanimation(gif_name, f1, 0.1, size(scna.data,3), ii);
+            for ii = 1:size(scan.data,3)                
+                imagesc(log10(squeeze(scan.data(:,:,ii))));
+                colormap(scan.data_meta.colormap); axis image; %caxis([0.1 0.8]);
+                title([scan.data_meta.sample_name ' | Scan ' num2str(scan.data_meta.scan_number) ' | Frame ' num2str(ii)]);           
+                GIFanimation(gif_name, f1, 0.1, size(scan.data,3), ii);
             end
             disp('Done!');
         end
@@ -874,6 +913,16 @@ classdef Scan < handle
             end
             
             disp('Done!');
+            
+            scan.average;
+            scan.show_data_average('log');
+            hFig = gcf;
+            set(hFig,'Units','Inches');
+            pos = get(hFig,'Position');
+            set(hFig,'PaperPositionMode','Auto','PaperUnits','Inches','PaperSize',[pos(3), pos(4)]);
+            print(hFig,fullfile(scan.data_meta.save_folder,file_temp,'average_pattern.pdf'),'-dpdf','-r0');
+            print(hFig,fullfile(scan.data_meta.save_folder,file_temp,'average_pattern.png'),'-dpng','-r0');
+            close(hFig);
         end
     end
     
@@ -931,7 +980,7 @@ classdef Scan < handle
 
             handles.figHandle = figure;
             subplot(2,2,[1,3]); imagesc(log10(scan.data_average)); axis image; title('Integrated intensity');
-            colormap jet;
+            colormap(scan.data_meta.colormap);
             
             mapX = zeros([size(scan.data,4),size(scan.data,3)]);
             mapY = zeros([size(scan.data,4),size(scan.data,3)]);
