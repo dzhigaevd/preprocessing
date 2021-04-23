@@ -145,87 +145,97 @@ classdef Scan < handle
         
         function create_mask(scan,dim)
             function f_capturekeystroke(H,E)
-                disp(E.Key);
+                 % capturing and logging keystrokes
+%                 disp(E.Key);
+                
                 switch E.Key
                     case 'escape'
                         fprintf('Mask creation is broken at:\n %s\n',[scan.data_meta.sample_name ' | Scan '...
-                                       num2str(scan.data_meta.scan_number(jj)) ' | Frame ' ...
-                                       num2str(ii)]);                                                         
+                                       num2str(scan.data_meta.scan_number) ' | Frame ' ...
+                                       num2str(kk)]);                                                         
                         flag_exit       = 1;  
-                    case 'space'
+                        close;
+                    case 'rightarrow'
+                        flag_previous_frame = 0;
                         flag_next_frame = 1;
                         disp('Frame skipped!');
                     case 'control'
                         flag_control = 1;
                         disp('Frame masking!');
+                    case 'leftarrow'
+                        flag_previous_frame = 1;
+                        flag_next_frame = 0;
+                        disp('Previous frame!');
                 end
+            end
+            
+            function handles = drawFrame(scan,hAx,ll)
+                axes(hAx);
+                cla(hAx);
+                handles.imHandle = imagesc((scan.data(:,:,ll)),[0 2]);
+                axis image;
+                handles.colorBar = colorbar;
+                ylabel(handles.colorBar,'linear scale');
+                colormap gray
+                title({[scan.data_meta.sample_name ' | Scan '...
+                       num2str(scan.data_meta.scan_number) ' | Frame ' ...
+                       num2str(ll)], 'Right - next | Left - previous frame | Ctrl - mask | Esc - exit'});
+                drawnow;
             end
             
             if nargin==1
                 dim = '3D';
             end
+            
             switch dim
                 case '3D'   
                     flag_exit       = 0;
                     hF = figure('keypressfcn',@f_capturekeystroke);
                     hAx = axes('Parent',hF);
                     disp('Masking:\n esc - abort;\n space - next frame;\n Ctrl - mask frame;\n')
-                    for jj = 1:size(scan.data,4)
-                        if flag_exit
-                            return;
-                        else                           
-                            for ii = 1:size(scan.data,3)   
-                                if flag_exit
-                                    return;
-                                else
-                                    cla(hAx);
-                                    flag_next_frame = 0;  
-                                    flag_control    = 0;
-                                    scan.mask(:,:,ii,jj) = zeros(size(scan.data(:,:,ii,jj)));
-                                    while ~flag_next_frame & ~flag_exit 
-                                        imagesc(log10(scan.data_average)); 
-                                        handles.imHandle = imagesc((scan.data(:,:,ii,jj)));
-                                        axis image;
-                                        handles.colorBar = colorbar;
-                                        ylabel(handles.colorBar,'linear scale');
-%                                         colormap(scan.data_meta.colormap);
-                                        colormap jet
-                                        title({[scan.data_meta.sample_name ' | Scan '...
-                                               num2str(scan.data_meta.scan_number(jj)) ' | Frame ' ...
-                                               num2str(ii)], 'Space - next frame | Ctrl - mask | Esc - exit'});
-                                        if flag_exit
-                                            close(hF);
-                                            return;                                            
-                                        else
-                                            waitforbuttonpress;
-                                            if flag_exit
-                                                close(hF);
-                                                return;
-                                            else
-                                                if flag_control
-                                                    hROI = drawfreehand(hAx);
-                                                    scan.mask(:,:,ii,jj) = scan.mask(:,:,ii,jj)+createMask(hROI);
-                                                    waitforbuttonpress; 
-                                                else
-                                                    disp('skipped')
-                                                    break;
-                                                end
-                                            end
-                                        end                                   
-                                    end 
-                                    scan.mask(:,:,ii,jj) = scan.mask(:,:,ii,jj)>0;
+                    
+                    kk = 1;                                       
+                    flag_exit = 0;
+                    flag_control    = 0;
+                    flag_previous_frame = 0;
+                    flag_next_frame = 0; 
+                    
+                    while kk <= size(scan.data,3) && kk>0                                                
+                        scan.mask(:,:,kk) = zeros(size(scan.data(:,:,kk)));                    
+                        drawFrame(scan,hAx,kk);
+                        w = waitforbuttonpress;
+                        if w
+                            if flag_exit
+                                close(hF);
+                                break;
+                            else                            
+                                if flag_control == 1
+                                    hROI = drawfreehand(hAx);
+                                    scan.mask(:,:,kk) = scan.mask(:,:,kk)+createMask(hROI);
+                                    scan.mask(:,:,kk) = scan.mask(:,:,kk)>0;
                                     disp('Mask frame recorded!');
+                                    kk = kk+1;                                       
+                                elseif flag_next_frame == 1
+                                    kk = kk+1;
+                                elseif flag_previous_frame == 1
+                                    kk = kk-1;
+                                else
+                                    warning('Unknown keystroke!')
+                                    return;
                                 end
-                            end
+                            end  
                         end
                     end
-                scan.mask = abs(scan.mask-1);
-                disp('Full 3D mask recorded!'); 
-                close(hF);
-            end
+                    
+                    scan.mask = abs(scan.mask-1);
+                    disp('Full 3D mask recorded!'); 
+                    close(hF);
+                
+            end 
+            
         end
-        
-        
+
+                
         function read_tif(scan)
             try
                 for jj = 1:numel(scan.data_meta.scan_number)
@@ -294,7 +304,7 @@ classdef Scan < handle
                 catch
                     warning('The ROI of the data is not defined! Proceed with full detector.')
                 end
-                scan.white_field(scan.white_field < 6000) = 1e25;
+                scan.white_field(scan.white_field < 100) = 1e20;
                 disp('+ White field loaded');
             catch
                 warning('- No white field specified!');
